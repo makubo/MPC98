@@ -1,4 +1,4 @@
-﻿/*
+/*
      File:       Icons.h
  
      Contains:   Icon Utilities and Icon Services Interfaces.
