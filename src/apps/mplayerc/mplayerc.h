@@ -296,6 +296,12 @@ class CMPlayerCApp : public CWinApp
 	void SendCommandLine(HWND hWnd);
 
 public:
+	enum JellyfinStreamingMode
+	{
+		JFSM_DIRECTPLAY_ONLY = 1,
+		JFSM_PROGRESSIVE_TRANSCODE = 2,
+		JFSM_HLS = 3
+	};
 	CMPlayerCApp();
 
 	void ShowCmdlnSwitches();
@@ -480,6 +486,16 @@ public:
 
 		CString ISDb;
 
+		CString JellyfinServerUrl;
+		CString JellyfinUsername;
+		CString JellyfinUserId;
+		CString JellyfinAccessToken;
+		CString JellyfinDeviceId;
+		int JellyfinStreamingMode;
+		CString JellyfinVideoCodec, JellyfinAudioCodec, JellyfinContainer;
+		int JellyfinVideoBitrate, JellyfinAudioBitrate, JellyfinMaxStreamingBitrate;
+		int JellyfinMaxWidth, JellyfinMaxHeight, JellyfinMaxFramerate;
+
 		struct Shader {CString label, target, srcdata;};
 		CAtlList<Shader> m_shaders;
 		CString m_shadercombine;
@@ -506,3 +522,7 @@ public:
 #define AfxGetMyApp() ((CMPlayerCApp*)AfxGetApp())
 #define AfxGetAppSettings() ((CMPlayerCApp*)AfxGetApp())->m_s
 #define AppSettings CMPlayerCApp::Settings
+
+// Keep the Jellyfin client identification version aligned with the public
+// MPC98 version displayed by the About dialog resource.
+#define MPC98_VERSION _T("6.4.9.1")

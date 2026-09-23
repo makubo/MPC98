@@ -320,6 +320,9 @@
 #define IDD_FILEPROPRES                 10049
 #define IDD_SAVETHUMBSDIALOGTEMPL       10050
 #define IDD_SAVETHUMBSDIALOGTEMPL_400   10051
+#define IDD_JELLYFIN_LOGIN              10052
+#define IDD_JELLYFIN_BAR                10053
+#define IDD_PPAGEJELLYFIN               10054
 #define IDC_COMBO1                      11000
 #define IDC_COMBO2                      11001
 #define IDC_COMBO3                      11002
@@ -454,6 +457,22 @@
 #define IDC_CHECK_MPEGINTERLACED        12132
 #define IDC_DSVMR9YUVMIXER              12133
 #define IDC_VERSION                     12134
+#define IDC_EDIT_JF_SERVER              12135
+#define IDC_EDIT_JF_USER                12136
+#define IDC_EDIT_JF_PASS                12137
+#define IDC_JELLYFIN_TREE               12138
+#define IDC_JELLYFIN_PLAY               12139
+#define IDC_JELLYFIN_LOGIN              12140
+#define IDC_JF_STREAMMODE                12141
+#define IDC_JF_VCODEC                    12142
+#define IDC_JF_ACODEC                    12143
+#define IDC_JF_CONTAINER                 12144
+#define IDC_JF_VBITRATE                  12145
+#define IDC_JF_ABITRATE                  12146
+#define IDC_JF_MAXBITRATE                12147
+#define IDC_JF_MAXWIDTH                  12148
+#define IDC_JF_MAXHEIGHT                 12149
+#define IDC_JF_MAXFRAMERATE              12150
 
 #define IDS_R_SETTINGS                  13000
 #define IDS_RS_TITLEBARTEXTSTYLE        13001
@@ -726,6 +745,23 @@
 #define ID_SUB_DELAY_DOWN               14191
 #define ID_SUB_DELAY_UP                 14192
 #define IDS_RS_SUBDELAYINTERVAL         14193
+#define ID_FILE_OPENJELLYFIN            14194
+#define ID_VIEW_JELLYFIN                14195
+#define IDS_RS_JELLYFIN_URL             14196
+#define IDS_RS_JELLYFIN_USER            14197
+#define IDS_RS_JELLYFIN_USERID          14198
+#define IDS_RS_JELLYFIN_TOKEN           14199
+#define IDS_RS_JELLYFIN_DEVICEID        14200
+#define IDS_RS_JELLYFIN_MODE            14201
+#define IDS_RS_JELLYFIN_VCODEC          14202
+#define IDS_RS_JELLYFIN_ACODEC          14203
+#define IDS_RS_JELLYFIN_CONTAINER       14204
+#define IDS_RS_JELLYFIN_VBITRATE        14205
+#define IDS_RS_JELLYFIN_ABITRATE        14206
+#define IDS_RS_JELLYFIN_MAXBITRATE      14207
+#define IDS_RS_JELLYFIN_MAXWIDTH        14208
+#define IDS_RS_JELLYFIN_MAXHEIGHT       14209
+#define IDS_RS_JELLYFIN_MAXFRAMERATE    14210
 
 // Next default values for new objects
 // 

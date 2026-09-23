@@ -220,6 +220,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	ON_UPDATE_COMMAND_UI(ID_FILE_OPENDVD, OnUpdateFileOpen)
 	ON_COMMAND(ID_FILE_OPENDEVICE, OnFileOpendevice)
 	ON_UPDATE_COMMAND_UI(ID_FILE_OPENDEVICE, OnUpdateFileOpen)
+	ON_COMMAND(ID_FILE_OPENJELLYFIN, OnFileOpenJellyfin)
 	ON_COMMAND_RANGE(ID_FILE_OPEN_CD_START, ID_FILE_OPEN_CD_END, OnFileOpenCD)
 	ON_UPDATE_COMMAND_UI_RANGE(ID_FILE_OPEN_CD_START, ID_FILE_OPEN_CD_END, OnUpdateFileOpen)
 	ON_WM_DROPFILES()
@@ -259,6 +260,8 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_PLAYLIST, OnUpdateViewPlaylist)
 	ON_COMMAND(ID_VIEW_CAPTURE, OnViewCapture)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_CAPTURE, OnUpdateViewCapture)
+	ON_COMMAND(ID_VIEW_JELLYFIN, OnViewJellyfin)
+	ON_UPDATE_COMMAND_UI(ID_VIEW_JELLYFIN, OnUpdateViewJellyfin)
 	ON_COMMAND(ID_VIEW_SHADEREDITOR, OnViewShaderEditor)
 	ON_UPDATE_COMMAND_UI(ID_VIEW_SHADEREDITOR, OnUpdateViewShaderEditor)
 	ON_COMMAND(ID_VIEW_PRESETS_MINIMAL, OnViewMinimal)
@@ -390,7 +393,14 @@ CMainFrame::CMainFrame() :
 	m_fOpeningAborted(false),
 	m_fBuffering(false),
 	m_fileDropTarget(this),
-	m_fTrayIcon(false)
+	m_fTrayIcon(false),
+	m_pJellyfinActiveClient(NULL),
+	m_jellyfinStartPositionTicks(0),
+	m_jellyfinDurationTicks(0),
+	m_jellyfinElapsedTicks(0),
+	m_jellyfinClockLastTick(0),
+	m_jellyfinProgressive(false),
+	m_jellyfinSessionActive(false)
 {
 }
 
@@ -460,6 +470,11 @@ int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 	m_wndCaptureBar.SetBarStyle(m_wndCaptureBar.GetBarStyle() | CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC);
 	m_wndCaptureBar.EnableDocking(CBRS_ALIGN_LEFT|CBRS_ALIGN_RIGHT);
 	LoadControlBar(&m_wndCaptureBar, AFX_IDW_DOCKBAR_LEFT);
+
+	m_wndJellyfinBar.Create(this);
+	m_wndJellyfinBar.SetBarStyle(m_wndJellyfinBar.GetBarStyle() | CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC);
+	m_wndJellyfinBar.EnableDocking(CBRS_ALIGN_LEFT|CBRS_ALIGN_RIGHT);
+	LoadControlBar(&m_wndJellyfinBar, AFX_IDW_DOCKBAR_LEFT);
 
 	m_wndShaderEditorBar.Create(this);
 	m_wndShaderEditorBar.SetBarStyle(m_wndShaderEditorBar.GetBarStyle() | CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC);
@@ -1226,17 +1241,75 @@ LRESULT CMainFrame::OnAppCommand(WPARAM wParam, LPARAM lParam)
 
 	return Default();
 }
+void CMainFrame::UpdateJellyfinClock()
+{
+	if(!m_jellyfinSessionActive || !m_jellyfinProgressive)
+		return;
+
+	DWORD now = GetTickCount();
+	if(m_jellyfinClockLastTick == 0)
+	{
+		m_jellyfinClockLastTick = now;
+		return;
+	}
+
+	// The URL reader's IMediaSeeking position remains at zero for a
+	// progressive Jellyfin transcode. Track elapsed wall time while the
+	// graph is actually running instead. Unsigned subtraction handles the
+	// normal GetTickCount wraparound case.
+	if(GetMediaState() == State_Running)
+		m_jellyfinElapsedTicks += 10000i64 * (DWORD)(now - m_jellyfinClockLastTick);
+
+	m_jellyfinClockLastTick = now;
+}
+
+REFERENCE_TIME CMainFrame::GetJellyfinPosition() const
+{
+	REFERENCE_TIME rt = m_jellyfinStartPositionTicks + m_jellyfinElapsedTicks;
+	if(rt < 0) rt = 0;
+	if(m_jellyfinDurationTicks > 0 && rt > m_jellyfinDurationTicks)
+		rt = m_jellyfinDurationTicks;
+	return rt;
+}
 
 void CMainFrame::OnTimer(UINT nIDEvent)
 {
+	UpdateJellyfinClock();
+
+	if(nIDEvent == TIMER_JELLYFINREPORT && m_jellyfinSessionActive && m_pJellyfinActiveClient)
+	{
+		REFERENCE_TIME rtNow = 0;
+		bool fPaused = true;
+		if(m_iMediaLoadState == MLS_LOADED && pMS)
+		{
+			pMS->GetCurrentPosition(&rtNow);
+			if(pMC)
+			{
+				OAFilterState fs;
+				if(SUCCEEDED(pMC->GetState(0, &fs)))
+					fPaused = (fs != State_Running);
+			}
+		}
+		m_pJellyfinActiveClient->ReportPlaybackProgress(m_jellyfinItemId, m_jellyfinPlaySessionId, m_jellyfinMediaSourceId,
+			m_jellyfinProgressive ? GetJellyfinPosition() : max(0i64, rtNow), fPaused);
+	}
+
 	if(nIDEvent == TIMER_STREAMPOSPOLLER && m_iMediaLoadState == MLS_LOADED)
 	{
 		REFERENCE_TIME rtNow = 0, rtDur = 0;
 
 		if(m_iPlaybackMode == PM_FILE)
 		{
-			pMS->GetCurrentPosition(&rtNow);
-			pMS->GetDuration(&rtDur);
+			if(m_jellyfinSessionActive && m_jellyfinProgressive)
+			{
+				rtNow = GetJellyfinPosition();
+				rtDur = m_jellyfinDurationTicks;
+			}
+			else
+			{
+				pMS->GetCurrentPosition(&rtNow);
+				pMS->GetDuration(&rtDur);
+			}
 
 			if(m_rtDurationOverride >= 0) rtDur = m_rtDurationOverride;
 
@@ -2230,6 +2303,14 @@ void CMainFrame::OnHScroll(UINT nSBCode, UINT nPos, CScrollBar* pScrollBar)
 	}
 	else if(pScrollBar->IsKindOf(RUNTIME_CLASS(CPlayerSeekBar)) && m_iMediaLoadState == MLS_LOADED)
 	{
+		if(m_jellyfinSessionActive)
+		{
+			// The seek bar posts THUMBPOSITION on mouse-down and THUMBTRACK
+			// while dragged. Ignore both for a Jellyfin stream and reopen it
+			// once on the completion notification posted by PlayerSeekBar.
+			if(nSBCode != SB_ENDSCROLL)
+				return;
+		}
 		SeekTo(m_wndSeekBar.GetPos(), !!(::GetKeyState(VK_SHIFT)&0x8000));
 	}
 
@@ -4380,6 +4461,100 @@ void CMainFrame::OnUpdateViewCapture(CCmdUI* pCmdUI)
 	pCmdUI->SetCheck(m_wndCaptureBar.IsWindowVisible());
 	pCmdUI->Enable(m_iMediaLoadState == MLS_LOADED && m_iPlaybackMode == PM_CAPTURE);
 }
+
+void CMainFrame::OnViewJellyfin()
+{
+	ShowControlBar(&m_wndJellyfinBar, !m_wndJellyfinBar.IsWindowVisible(), TRUE);
+}
+
+void CMainFrame::OnUpdateViewJellyfin(CCmdUI* pCmdUI)
+{
+	pCmdUI->SetCheck(m_wndJellyfinBar.IsWindowVisible());
+	pCmdUI->Enable(TRUE);
+}
+
+void CMainFrame::OnFileOpenJellyfin()
+{
+	// "File > Open Jellyfin..." just ensures the browser panel is visible
+	// and focused; login/browsing/playing all happen from within the
+	// panel itself (see CJellyfinBrowserDialog).
+	if(!m_wndJellyfinBar.IsWindowVisible())
+		ShowControlBar(&m_wndJellyfinBar, TRUE, TRUE);
+	m_wndJellyfinBar.SetFocus();
+}
+
+void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item, REFERENCE_TIME rtStart)
+{
+	if(!pClient || item.isFolder)
+		return;
+	if(m_iMediaLoadState == MLS_LOADING || !IsWindow(m_wndPlaylistBar))
+		return;
+
+	CString url, playSessionId, error;
+	CStringA mediaSourceId;
+	bool fDirectPlay = false;
+	bool fHls = false;
+	AppSettings& s = AfxGetAppSettings();
+	if(s.JellyfinStreamingMode == CMPlayerCApp::JFSM_HLS)
+	{
+		fHls = pClient->GetHlsStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart);
+		if(!fHls)
+		{
+			AfxMessageBox(_T("Failed to resolve Jellyfin HLS stream: ") + error);
+			return;
+		}
+	}
+	if(s.JellyfinStreamingMode == CMPlayerCApp::JFSM_DIRECTPLAY_ONLY)
+	{
+		CJellyfinPlaybackInfo info;
+		if(pClient->GetPlaybackInfo(item, info, error) && info.supportsDirectPlay)
+			fDirectPlay = pClient->GetDirectPlayStreamUrl(item, info, url, playSessionId, mediaSourceId, error);
+
+		if(!fDirectPlay && s.JellyfinStreamingMode == CMPlayerCApp::JFSM_DIRECTPLAY_ONLY)
+		{
+			AfxMessageBox(_T("Direct play is unavailable: ") + error);
+			return;
+		}
+	}
+
+	if(!fDirectPlay && !fHls && !pClient->GetTranscodedStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart))
+	{
+		AfxMessageBox(_T("Failed to resolve Jellyfin stream: ") + error);
+		return;
+	}
+
+	SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+
+	ShowWindow(SW_SHOW);
+	SetForegroundWindow();
+
+	CAtlList<CString> fns;
+	fns.AddTail(url);
+	m_wndPlaylistBar.Open(fns, false);
+
+	OpenCurPlaylistItem();
+
+	m_pJellyfinActiveClient = pClient;
+	m_jellyfinItemId = item.id;
+	m_jellyfinPlaySessionId = playSessionId;
+	m_jellyfinMediaSourceId = mediaSourceId;
+	m_jellyfinStartPositionTicks = rtStart < 0 ? 0 : rtStart;
+	m_jellyfinDurationTicks = item.runtimeTicks;
+	m_jellyfinElapsedTicks = 0;
+	m_jellyfinClockLastTick = GetTickCount();
+	// Both progressive and HLS delivery are server-timed streams. Their
+	// DirectShow IAsyncReader position stays at zero, so they share the
+	// Jellyfin elapsed-time clock and server-side restart seek path.
+	m_jellyfinProgressive = !fDirectPlay;
+	m_jellyfinSessionActive = true;
+	if(item.runtimeTicks > 0)
+		m_rtDurationOverride = item.runtimeTicks;
+
+	pClient->ReportPlaybackStart(item.id, playSessionId, mediaSourceId, m_jellyfinStartPositionTicks);
+
+	SetTimer(TIMER_JELLYFINREPORT, 10000, NULL);
+}
+
 
 void CMainFrame::OnViewShaderEditor()
 {
@@ -9365,6 +9540,23 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool fSeekToKeyFrame)
 
 	if(rtPos < 0) rtPos = 0;
 
+	// A progressive Jellyfin HTTP stream is not byte-seekable. Reopen the
+	// server-side transcode at the requested absolute source position
+	// instead of passing the request to IMediaSeeking on the current URL.
+	if(m_jellyfinSessionActive && m_jellyfinProgressive && m_pJellyfinActiveClient
+	&& m_iPlaybackMode == PM_FILE)
+	{
+		if(m_jellyfinDurationTicks > 0 && rtPos > m_jellyfinDurationTicks)
+			rtPos = m_jellyfinDurationTicks;
+
+		CJellyfinItem item;
+		item.id = m_jellyfinItemId;
+		item.mediaSourceId = m_jellyfinMediaSourceId;
+		item.runtimeTicks = m_jellyfinDurationTicks;
+		OpenJellyfinItem(m_pJellyfinActiveClient, item, rtPos);
+		return;
+	}
+
 	if(m_iPlaybackMode == PM_FILE)
 	{
 		if(fs == State_Stopped)
@@ -9986,6 +10178,24 @@ void CMainFrame::CloseMedia()
 	m_fOpeningAborted = false;
 
 	m_closingmsg.Empty();
+
+	if(m_jellyfinSessionActive && m_pJellyfinActiveClient)
+	{
+		UpdateJellyfinClock();
+		REFERENCE_TIME rtNow = 0;
+		if(pMS) pMS->GetCurrentPosition(&rtNow);
+		if(rtNow < 0) rtNow = 0;
+		m_pJellyfinActiveClient->ReportPlaybackStopped(m_jellyfinItemId, m_jellyfinPlaySessionId, m_jellyfinMediaSourceId,
+			m_jellyfinProgressive ? GetJellyfinPosition() : rtNow);
+		KillTimer(TIMER_JELLYFINREPORT);
+		m_jellyfinSessionActive = false;
+		m_pJellyfinActiveClient = NULL;
+		m_jellyfinStartPositionTicks = 0;
+		m_jellyfinDurationTicks = 0;
+		m_jellyfinElapsedTicks = 0;
+		m_jellyfinClockLastTick = 0;
+		m_jellyfinProgressive = false;
+	}
 
 	m_iMediaLoadState = MLS_CLOSING;
 

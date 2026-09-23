@@ -32,6 +32,7 @@
 #include "PlayerPlaylistBar.h"
 #include "PlayerCaptureBar.h"
 #include "PlayerShaderEditorBar.h"
+#include "PlayerJellyfinBar.h"
 #include "PPageSheet.h"
 #include "PPageFileInfoSheet.h"
 #include "OpenCapDeviceDlg.h"
@@ -143,7 +144,8 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 		TIMER_FULLSCREENMOUSEHIDER, 
 		TIMER_STATS,
 		TIMER_LEFTCLICK,
-		TIMER_STATUSERASER
+		TIMER_STATUSERASER,
+		TIMER_JELLYFINREPORT
 	};
 
 	friend class CPPageFileInfoSheet;
@@ -164,6 +166,30 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 	CComQIPtr<IQualProp, &IID_IQualProp> pQP;
 	CComQIPtr<IBufferInfo> pBI;
 	CComQIPtr<IAMOpenProgress> pAMOP;
+
+	// Jellyfin playback session tracking (see JellyfinBrowserDialog /
+	// CMainFrame::OpenJellyfinItem). m_pJellyfinActiveClient is a
+	// non-owning pointer into m_wndJellyfinBar.m_dlg.m_client, valid for
+	// as long as the docking bar exists (the lifetime of the frame).
+	CJellyfinClient* m_pJellyfinActiveClient;
+	CString m_jellyfinItemId;
+	CString m_jellyfinPlaySessionId;
+	CStringA m_jellyfinMediaSourceId;
+	REFERENCE_TIME m_jellyfinStartPositionTicks;
+	REFERENCE_TIME m_jellyfinDurationTicks;
+	REFERENCE_TIME m_jellyfinElapsedTicks;
+	DWORD m_jellyfinClockLastTick;
+	bool m_jellyfinProgressive;
+	bool m_jellyfinSessionActive;
+
+	void UpdateJellyfinClock();
+	REFERENCE_TIME GetJellyfinPosition() const;
+
+public:
+	void OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item,
+		REFERENCE_TIME rtStart = 0);
+
+private:
 
 	CComQIPtr<IDvdControl2> pDVDC;
 	CComQIPtr<IDvdInfo2> pDVDI;
@@ -427,6 +453,7 @@ protected:  // control bar embedded members
 	CPlayerSubresyncBar m_wndSubresyncBar;
 	CPlayerPlaylistBar m_wndPlaylistBar;
 	CPlayerCaptureBar m_wndCaptureBar;
+	CPlayerJellyfinBar m_wndJellyfinBar;
 	CPlayerShaderEditorBar m_wndShaderEditorBar;
 	CList<CSizingControlBar*> m_dockingbars;
 
@@ -568,6 +595,9 @@ public:
 	afx_msg void OnUpdateViewPlaylist(CCmdUI* pCmdUI);
 	afx_msg void OnViewCapture();
 	afx_msg void OnUpdateViewCapture(CCmdUI* pCmdUI);
+	afx_msg void OnViewJellyfin();
+	afx_msg void OnUpdateViewJellyfin(CCmdUI* pCmdUI);
+	afx_msg void OnFileOpenJellyfin();
 	afx_msg void OnViewShaderEditor();
 	afx_msg void OnUpdateViewShaderEditor(CCmdUI* pCmdUI);
 	afx_msg void OnViewMinimal();

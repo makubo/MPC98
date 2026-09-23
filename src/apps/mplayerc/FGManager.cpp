@@ -26,6 +26,7 @@
 #include "..\..\Filters\Filters.h"
 #include "DX7AllocatorPresenter.h"
 #include "DX9AllocatorPresenter.h"
+#include "HlsReader.h"
 #include "DeinterlacerFilter.h"
 #include <initguid.h>
 #include "..\..\..\include\moreuuids.h"
@@ -163,6 +164,17 @@ HRESULT CFGManager::EnumSourceFilters(LPCWSTR lpcwstrFileName, CFGFilterList& fl
 	CStringW fn = CStringW(lpcwstrFileName).TrimLeft();
 	CStringW protocol = fn.Left(fn.Find(':')+1).TrimRight(':').MakeLower();
 	CStringW ext = CPathW(fn).GetExtension().MakeLower();
+	CStringW lowerfn(fn);
+	lowerfn.MakeLower();
+
+	// CShoutcastSource registers as the handler for every http URL, but
+	// it only understands ICY/MP3 radio. Jellyfin's progressive MPEG-TS
+	// endpoint is a normal chunked HTTP response, so routing it through
+	// that source leaves playback stalled before the generic URL Reader
+	// can be tried. Jellyfin ignores this marker query parameter; it is
+	// appended only by CJellyfinClient, which lets us preserve ordinary
+	// Shoutcast behavior for all other http URLs.
+	bool fJellyfinStream = lowerfn.Find(L"mpcjellyfin=1") >= 0;
 
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 
@@ -194,6 +206,8 @@ HRESULT CFGManager::EnumSourceFilters(LPCWSTR lpcwstrFileName, CFGFilterList& fl
 		while(pos)
 		{
 			CFGFilter* pFGF = m_source.GetNext(pos);
+			if(fJellyfinStream && pFGF->GetCLSID() == __uuidof(CShoutcastSource))
+				continue;
 			if(pFGF->m_protocols.Find(CString(protocol)))
 				fl.Insert(pFGF, 0, false, false);
 		}
@@ -583,6 +597,38 @@ STDMETHODIMP CFGManager::Connect(IPin* pPinOut, IPin* pPinIn)
 			hr = pGC->AddFilterToCache(pBF);
 		}
 		EndEnumCachedFilters
+	}
+
+	// CHlsReader only exposes unencrypted MPEG-TS bytes. Connect it to the
+	// internal splitter directly instead of relying on external filter merits;
+	// older K-Lite/system splitters either reject the growing HLS stream or
+	// probe it unsafely before enough segments are available.
+	CComPtr<IBaseFilter> pSource = GetFilterFromPin(pPinOut);
+	bool fHlsSource = false;
+	if(!pPinIn && pSource)
+	{
+		CComQIPtr<IFileSourceFilter> pFS = pSource;
+		LPOLESTR fn = NULL;
+		if(pFS && SUCCEEDED(pFS->GetCurFile(&fn, NULL)) && fn)
+		{
+			fHlsSource = CStringW(fn).Left(6).CompareNoCase(L"hls://") == 0;
+			CoTaskMemFree(fn);
+		}
+	}
+	if(fHlsSource)
+	{
+		CFGFilterInternal<CMpegSplitterFilter> hlsSplitter(L"Jellyfin HLS MPEG Splitter", MERIT64_ABOVE_DSHOW);
+		CComPtr<IBaseFilter> pBF;
+		CInterfaceList<IUnknown, &IID_IUnknown> pUnks;
+		if(SUCCEEDED(hlsSplitter.Create(&pBF, pUnks))
+		&& SUCCEEDED(AddFilter(pBF, hlsSplitter.GetName()))
+		&& SUCCEEDED(ConnectFilterDirect(pPinOut, pBF, NULL))
+		&& SUCCEEDED(hr = ConnectFilter(pBF, NULL)))
+		{
+			m_pUnks.AddTailList(&pUnks);
+			return hr;
+		}
+		if(pBF) RemoveFilter(pBF);
 	}
 
 	// 3. Try filters in the graph
@@ -1161,9 +1207,10 @@ STDMETHODIMP CFGManager::GetDeadEnd(int iIndex, CAtlList<CStringW>& path, CAtlLi
 	{
 		const path_t& p = m_deadends[iIndex]->GetNext(pos);
 
-		CStringW str;
-		str.Format(L"%s::%s", p.filter, p.pin);
-		path.AddTail(str);
+		// Some failed streaming graph paths retain an incomplete filter-name
+		// CString in the dead-end list. Do not dereference it while building
+		// the diagnostic dialog; the media types remain available below.
+		path.AddTail(L"<filter path unavailable>");
 	}
 
 	mts.AddTailList(&m_deadends[iIndex]->mts);
@@ -1190,6 +1237,12 @@ CFGManagerCustom::CFGManagerCustom(LPCTSTR pName, LPUNKNOWN pUnk, UINT src, UINT
 		pFGF->m_protocols.AddTail(_T("http"));
 		m_source.AddTail(pFGF);
 	}
+
+	// HLS is exposed through a private scheme so it cannot hijack ordinary
+	// HTTP playback. CHlsReader translates hls:// back to HTTP internally.
+	pFGF = new CFGFilterInternal<CHlsReader>();
+	pFGF->m_protocols.AddTail(_T("hls"));
+	m_source.AddTail(pFGF);
 
 #if (_MSC_VER < 1500)
 	// if(src & SRC_UDP)

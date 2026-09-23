@@ -59,6 +59,7 @@
 #include <atlcoll.h>
 #include <atlpath.h>
 
+#include <mpc98/compat/refclock_timer_control.h>
 #include <streams.h>
 #include <dvdmedia.h>
 #include <mpconfig.h>
