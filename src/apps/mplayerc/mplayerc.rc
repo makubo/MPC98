@@ -181,10 +181,33 @@ BEGIN
     PUSHBUTTON      "Browse...",IDC_BUTTON2,187,67,47,14
     DEFPUSHBUTTON   "OK",IDOK,187,9,47,14,WS_GROUP
     PUSHBUTTON      "Cancel",IDCANCEL,187,25,47,14
-    CONTROL         "Add to playlist without opening",IDC_CHECK1,"Button",BS_AUTOCHECKBOX | WS_TABSTOP,33,37,115,10
 END
 
-IDD_ABOUTBOX DIALOGEX 0, 0, 222, 89
+IDD_JELLYFIN_LOGIN DIALOGEX 0, 0, 220, 100
+STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
+CAPTION "Jellyfin Login"
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    LTEXT           "Server URL:",IDC_STATIC,7,9,50,8
+    EDITTEXT        IDC_EDIT_JF_SERVER,65,7,148,14,ES_AUTOHSCROLL
+    LTEXT           "Username:",IDC_STATIC,7,27,50,8
+    EDITTEXT        IDC_EDIT_JF_USER,65,25,148,14,ES_AUTOHSCROLL
+    LTEXT           "Password:",IDC_STATIC,7,45,50,8
+    EDITTEXT        IDC_EDIT_JF_PASS,65,43,148,14,ES_PASSWORD | ES_AUTOHSCROLL
+    DEFPUSHBUTTON   "OK",IDOK,54,75,50,14,WS_GROUP
+    PUSHBUTTON      "Cancel",IDCANCEL,116,75,50,14
+END
+
+IDD_JELLYFIN_BAR DIALOGEX 0, 0, 200, 260
+STYLE DS_SETFONT | DS_FIXEDSYS | WS_CHILD
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    CONTROL         "",IDC_JELLYFIN_TREE,"SysTreeView32",TVS_HASLINES | TVS_HASBUTTONS | TVS_LINESATROOT | WS_BORDER | WS_TABSTOP,4,4,192,220
+    PUSHBUTTON      "Login...",IDC_JELLYFIN_LOGIN,4,230,60,14
+    PUSHBUTTON      "Play",IDC_JELLYFIN_PLAY,136,230,60,14
+END
+
+IDD_ABOUTBOX DIALOGEX 0, 0, 222, 97
 STYLE DS_SETFONT | DS_MODALFRAME | DS_FIXEDSYS | WS_POPUP | WS_CAPTION | WS_SYSMENU
 CAPTION "About"
 FONT 8, "MS Shell Dlg", 400, 0, 0xB1
@@ -192,9 +215,38 @@ BEGIN
     ICON            IDR_MAINFRAME,IDC_STATIC,11,17,20,20
     LTEXT           "Media Player Classic",IDC_STATIC1,40,12,126,8,SS_NOPREFIX
     LTEXT           "Copyright (C) 2002-2009 Gabest et al.",IDC_STATIC,40,26,170,8
-    LTEXT           "Version: 6.4.9.1 ",IDC_VERSION,40,40,170,8
+    LTEXT           "Copyright (C) 2026 Makubo",IDC_STATIC,40,34,170,8
+    LTEXT           "Version: 6.4.9.1 ",IDC_VERSION,40,48,170,8
     PUSHBUTTON      "OK",IDOK,160,8,50,14,WS_GROUP
-    LTEXT           "This program is freeware and released under the GNU General Public License.",IDC_STATIC,40,62,170,25
+    LTEXT           "This program is freeware and released under the GNU General Public License.",IDC_STATIC,40,70,170,25
+END
+
+IDD_PPAGEJELLYFIN DIALOGEX 0, 0, 296, 198
+STYLE DS_SETFONT | WS_CHILD | WS_CAPTION
+FONT 8, "MS Shell Dlg", 400, 0, 0x1
+BEGIN
+    GROUPBOX        "Streaming",IDC_STATIC,7,7,282,35
+    LTEXT           "Mode:",IDC_STATIC,14,20,48,8
+    COMBOBOX        IDC_JF_STREAMMODE,74,18,132,60,CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP
+    GROUPBOX        "Transcode output (0 means server default / no limit)",IDC_STATIC,7,72,282,118
+    LTEXT           "Video codec:",IDC_STATIC,14,86,55,8
+    COMBOBOX        IDC_JF_VCODEC,74,84,80,60,CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Audio codec:",IDC_STATIC,160,86,54,8
+    COMBOBOX        IDC_JF_ACODEC,218,84,64,60,CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Container:",IDC_STATIC,14,106,55,8
+    COMBOBOX        IDC_JF_CONTAINER,74,104,80,60,CBS_DROPDOWN | WS_VSCROLL | WS_TABSTOP
+    LTEXT           "Video kbps:",IDC_STATIC,160,106,54,8
+    EDITTEXT        IDC_JF_VBITRATE,218,104,64,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Audio kbps:",IDC_STATIC,14,126,55,8
+    EDITTEXT        IDC_JF_ABITRATE,74,124,80,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Max kbps:",IDC_STATIC,160,126,54,8
+    EDITTEXT        IDC_JF_MAXBITRATE,218,124,64,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Max width:",IDC_STATIC,14,146,55,8
+    EDITTEXT        IDC_JF_MAXWIDTH,74,144,80,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Max height:",IDC_STATIC,160,146,54,8
+    EDITTEXT        IDC_JF_MAXHEIGHT,218,144,64,14,ES_AUTOHSCROLL | ES_NUMBER
+    LTEXT           "Max frame rate:",IDC_STATIC,14,166,55,8
+    EDITTEXT        IDC_JF_MAXFRAMERATE,74,164,80,14,ES_AUTOHSCROLL | ES_NUMBER
 END
 
 IDD_PLAYERSTATUSBAR DIALOGEX 0, 0, 183, 15
@@ -621,7 +673,7 @@ BEGIN
     LTEXT           "Spacing",IDC_STATIC,11,50,26,8
     EDITTEXT        IDC_EDIT3,66,48,35,13,ES_RIGHT | ES_AUTOHSCROLL
     CONTROL         "",IDC_SPIN3,"msctls_updown32",UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,93,48,11,14
-    LTEXT           "Angle (z,°)",IDC_STATIC,11,69,36,8
+    LTEXT           "Angle (z,ï¿½)",IDC_STATIC,11,69,36,8
     EDITTEXT        IDC_EDIT4,66,67,35,13,ES_RIGHT | ES_AUTOHSCROLL | ES_NUMBER
     CONTROL         "",IDC_SPIN10,"msctls_updown32",UDS_WRAP | UDS_SETBUDDYINT | UDS_ALIGNRIGHT | UDS_AUTOBUDDY | UDS_ARROWKEYS | UDS_NOTHOUSANDS,93,67,11,14
     LTEXT           "Scale (x,%)",IDC_STATIC,11,88,39,8
@@ -1446,6 +1498,7 @@ BEGIN
         MENUITEM "&Open File...\tCtrl+O",       ID_FILE_OPENMEDIA
         MENUITEM "Open &DVD...\tCtrl+D",        ID_FILE_OPENDVD
         MENUITEM "Open De&vice...\tCtrl+V",     ID_FILE_OPENDEVICE
+        MENUITEM "Open &Jellyfin...",           ID_FILE_OPENJELLYFIN
         MENUITEM "O&pen Disc",                  65535
         MENUITEM "&Close",                      ID_FILE_CLOSEPLAYLIST
         MENUITEM SEPARATOR
@@ -1482,6 +1535,7 @@ BEGIN
         MENUITEM "Subresync\tCtrl+6",           ID_VIEW_SUBRESYNC
         MENUITEM "Playlist\tCtrl+7",            ID_VIEW_PLAYLIST
         MENUITEM "Capture\tCtrl+8",             ID_VIEW_CAPTURE
+        MENUITEM "Jellyfin Library",            ID_VIEW_JELLYFIN
         MENUITEM "Shader Editor\tCtrl+9",       ID_VIEW_SHADEREDITOR
         POPUP "Presets..."
         BEGIN
@@ -1719,6 +1773,7 @@ BEGIN
             MENUITEM "Subresync",                   ID_VIEW_SUBRESYNC
             MENUITEM "Playlist",                    ID_VIEW_PLAYLIST
             MENUITEM "Capture",                     ID_VIEW_CAPTURE
+            MENUITEM "Jellyfin Library",            ID_VIEW_JELLYFIN
             MENUITEM "Shader Editor",               ID_VIEW_SHADEREDITOR
             POPUP "Presets..."
             BEGIN
@@ -1743,6 +1798,7 @@ BEGIN
             MENUITEM "&Open File...\tCtrl+O",       ID_FILE_OPENMEDIA
             MENUITEM "Open &DVD...\tCtrl+D",        ID_FILE_OPENDVD
             MENUITEM "Open De&vice...\tCtrl+V",     ID_FILE_OPENDEVICE
+            MENUITEM "Open &Jellyfin...",           ID_FILE_OPENJELLYFIN
             MENUITEM "O&pen Disc",                  65535
             MENUITEM "&Close",                      ID_FILE_CLOSEPLAYLIST
             MENUITEM SEPARATOR
@@ -1777,6 +1833,7 @@ BEGIN
             MENUITEM "Subresync\tCtrl+6",           ID_VIEW_SUBRESYNC
             MENUITEM "Playlist\tCtrl+7",            ID_VIEW_PLAYLIST
             MENUITEM "Capture\tCtrl+8",             ID_VIEW_CAPTURE
+            MENUITEM "Jellyfin Library",            ID_VIEW_JELLYFIN
             MENUITEM "Shader Editor\tCtrl+9",       ID_VIEW_SHADEREDITOR
             POPUP "Presets..."
             BEGIN
@@ -2056,6 +2113,7 @@ END
 STRINGTABLE 
 BEGIN
     IDD_PPAGEPLAYBACK       "Playback"
+    IDD_PPAGEJELLYFIN       "Player::Jellyfin"
     IDD_PPAGEPLAYER         "Player"
     IDD_PPAGEDVD            "Playback::DVD/OGM"
     IDD_PPAGESUBTITLES      "Subtitles"
@@ -2260,6 +2318,21 @@ BEGIN
     IDS_TRA_DIRAC           "6.4.0.1\nBased on libdirac 0.5.0"
     IDS_TRA_PS2AUD          "6.4.0.1\nDecodes audio streams of PSS files"
     IDS_SRC_FLV             "6.4.0.4"
+    IDS_RS_JELLYFIN_URL     "JellyfinServerUrl"
+    IDS_RS_JELLYFIN_USER    "JellyfinUsername"
+    IDS_RS_JELLYFIN_USERID  "JellyfinUserId"
+    IDS_RS_JELLYFIN_TOKEN   "JellyfinAccessToken"
+    IDS_RS_JELLYFIN_DEVICEID "JellyfinDeviceId"
+    IDS_RS_JELLYFIN_MODE "JellyfinStreamingMode"
+    IDS_RS_JELLYFIN_VCODEC "JellyfinVideoCodec"
+    IDS_RS_JELLYFIN_ACODEC "JellyfinAudioCodec"
+    IDS_RS_JELLYFIN_CONTAINER "JellyfinContainer"
+    IDS_RS_JELLYFIN_VBITRATE "JellyfinVideoBitrate"
+    IDS_RS_JELLYFIN_ABITRATE "JellyfinAudioBitrate"
+    IDS_RS_JELLYFIN_MAXBITRATE "JellyfinMaxStreamingBitrate"
+    IDS_RS_JELLYFIN_MAXWIDTH "JellyfinMaxWidth"
+    IDS_RS_JELLYFIN_MAXHEIGHT "JellyfinMaxHeight"
+    IDS_RS_JELLYFIN_MAXFRAMERATE "JellyfinMaxFramerate"
 END
 
 STRINGTABLE 
