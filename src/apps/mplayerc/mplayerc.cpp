@@ -1314,6 +1314,23 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXHEIGHT), JellyfinMaxHeight);
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXFRAMERATE), JellyfinMaxFramerate);
 
+		pApp->WriteProfileString(_T("JellyfinServers"), NULL, NULL);
+		pApp->WriteProfileInt(_T("JellyfinServers"), _T("Count"), JellyfinServers.GetCount());
+		pApp->WriteProfileInt(_T("JellyfinServers"), _T("Active"), JellyfinActiveServer);
+		for(size_t i = 0; i < JellyfinServers.GetCount(); i++)
+		{
+			CString section;
+			section.Format(_T("JellyfinServer%u"), (UINT)i);
+			pApp->WriteProfileString(section, NULL, NULL);
+			const JellyfinServer& server = JellyfinServers[i];
+			pApp->WriteProfileString(section, _T("Name"), server.name);
+			pApp->WriteProfileString(section, _T("Url"), server.url);
+			pApp->WriteProfileString(section, _T("Username"), server.username);
+			pApp->WriteProfileString(section, _T("UserId"), server.userId);
+			pApp->WriteProfileString(section, _T("Token"), server.accessToken);
+			pApp->WriteProfileString(section, _T("DeviceId"), server.deviceId);
+		}
+
 		pApp->WriteProfileString(_T("Shaders"), NULL, NULL);
 		pApp->WriteProfileInt(_T("Shaders"), _T("Initialized"), 1);
 		pApp->WriteProfileString(_T("Shaders"), _T("Combine"), m_shadercombine);
@@ -1678,6 +1695,33 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 		JellyfinMaxWidth = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXWIDTH), 0);
 		JellyfinMaxHeight = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXHEIGHT), 0);
 		JellyfinMaxFramerate = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXFRAMERATE), 0);
+
+		JellyfinServers.RemoveAll();
+		int serverCount = pApp->GetProfileInt(_T("JellyfinServers"), _T("Count"), 0);
+		for(int i = 0; i < serverCount; i++)
+		{
+			CString section;
+			section.Format(_T("JellyfinServer%d"), i);
+			JellyfinServer server;
+			server.name = pApp->GetProfileString(section, _T("Name"), _T(""));
+			server.url = pApp->GetProfileString(section, _T("Url"), _T(""));
+			server.username = pApp->GetProfileString(section, _T("Username"), _T(""));
+			server.userId = pApp->GetProfileString(section, _T("UserId"), _T(""));
+			server.accessToken = pApp->GetProfileString(section, _T("Token"), _T(""));
+			server.deviceId = pApp->GetProfileString(section, _T("DeviceId"), _T(""));
+			if(!server.url.IsEmpty()) JellyfinServers.Add(server);
+		}
+		JellyfinActiveServer = pApp->GetProfileInt(_T("JellyfinServers"), _T("Active"), 0);
+		if(JellyfinActiveServer < 0 || JellyfinActiveServer >= (int)JellyfinServers.GetCount()) JellyfinActiveServer = 0;
+		if(!JellyfinServers.IsEmpty())
+		{
+			const JellyfinServer& server = JellyfinServers[JellyfinActiveServer];
+			JellyfinServerUrl = server.url;
+			JellyfinUsername = server.username;
+			JellyfinUserId = server.userId;
+			JellyfinAccessToken = server.accessToken;
+			JellyfinDeviceId = server.deviceId;
+		}
 
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), _T("LastUsedPage"), 0);
 

@@ -12,6 +12,7 @@ CJellyfinBrowserDialog::CJellyfinBrowserDialog(CWnd* pParent)
 
 CJellyfinBrowserDialog::~CJellyfinBrowserDialog()
 {
+	for(size_t i = 0; i < m_clients.GetCount(); i++) delete m_clients[i];
 }
 
 BOOL CJellyfinBrowserDialog::Create(CWnd* pParentWnd)
@@ -29,25 +30,7 @@ BOOL CJellyfinBrowserDialog::OnInitDialog()
 {
 	CDialog::OnInitDialog();
 
-	AppSettings& s = AfxGetAppSettings();
-	if(!s.JellyfinServerUrl.IsEmpty())
-	{
-		m_client.SetServer(s.JellyfinServerUrl);
-
-		// Jellyfin access tokens are associated with the client DeviceId.
-		// Reusing a saved token under a newly generated DeviceId makes
-		// Jellyfin 12 return a misleading HTTP 500. Older installs have no
-		// stored device ID, so require a one-time re-login rather than
-		// attempting that invalid token/device pairing.
-		if(!s.JellyfinDeviceId.IsEmpty())
-			m_client.SetDeviceId(s.JellyfinDeviceId);
-
-		if(!s.JellyfinDeviceId.IsEmpty() && !s.JellyfinUserId.IsEmpty() && !s.JellyfinAccessToken.IsEmpty())
-		{
-			m_client.SetAccessToken(s.JellyfinUserId, s.JellyfinAccessToken);
-			PopulateRoot();
-		}
-	}
+	ReloadServers();
 
 	return TRUE;
 }
@@ -73,30 +56,69 @@ void CJellyfinBrowserDialog::ClearTree()
 	m_tree.DeleteAllItems();
 }
 
+void CJellyfinBrowserDialog::ReloadServers()
+{
+	ClearTree();
+	for(size_t i = 0; i < m_clients.GetCount(); i++) delete m_clients[i];
+	m_clients.RemoveAll();
+
+	AppSettings& s = AfxGetAppSettings();
+	for(size_t i = 0; i < s.JellyfinServers.GetCount(); i++)
+	{
+		const AppSettings::JellyfinServer& server = s.JellyfinServers[i];
+		if(server.url.IsEmpty() || server.userId.IsEmpty() || server.accessToken.IsEmpty() || server.deviceId.IsEmpty()) continue;
+		CJellyfinClient* client = new CJellyfinClient();
+		client->SetServer(server.url);
+		client->SetDeviceId(server.deviceId);
+		client->SetAccessToken(server.userId, server.accessToken);
+		m_clients.Add(client);
+	}
+	PopulateRoot();
+}
+
 void CJellyfinBrowserDialog::PopulateRoot()
 {
 	ClearTree();
 
-	CAtlArray<CJellyfinItem> items;
-	CString error;
-	if(!m_client.GetLibraries(items, error))
+	AppSettings& s = AfxGetAppSettings();
+	for(size_t serverIndex = 0, clientIndex = 0; serverIndex < s.JellyfinServers.GetCount(); serverIndex++)
 	{
-		AfxMessageBox(_T("Failed to load Jellyfin libraries: ") + error);
-		return;
-	}
+		const AppSettings::JellyfinServer& server = s.JellyfinServers[serverIndex];
+		if(server.url.IsEmpty() || server.userId.IsEmpty() || server.accessToken.IsEmpty() || server.deviceId.IsEmpty()) continue;
+		if(clientIndex >= m_clients.GetCount()) break;
 
-	for(size_t i = 0; i < items.GetCount(); i++)
-	{
-		CJellyfinTreeItemData* pData = new CJellyfinTreeItemData();
-		pData->item = items[i];
-		pData->item.isFolder = true; // library "Views" are always browsable folders
+		CString label = server.url;
+		int scheme = label.Find(_T("://"));
+		if(scheme >= 0) label = label.Mid(scheme + 3);
+		int slash = label.Find(_T('/'));
+		if(slash >= 0) label = label.Left(slash);
+		if(label.IsEmpty()) label = server.name;
+		HTREEITEM root = m_tree.InsertItem(label, TVI_ROOT, TVI_LAST);
+		CJellyfinTreeItemData* rootData = new CJellyfinTreeItemData();
+		rootData->serverIndex = clientIndex;
+		rootData->childrenLoaded = true;
+		m_tree.SetItemData(root, (DWORD_PTR)rootData);
 
-		HTREEITEM hItem = m_tree.InsertItem(items[i].name, TVI_ROOT, TVI_LAST);
-		m_tree.SetItemData(hItem, (DWORD_PTR)pData);
-
-		// Placeholder child so the expand glyph shows up; replaced with
-		// real children (or removed) on first expand.
-		m_tree.InsertItem(_T("Loading..."), hItem, TVI_LAST);
+		CAtlArray<CJellyfinItem> items;
+		CString error;
+		if(!m_clients[clientIndex]->GetLibraries(items, error))
+		{
+			m_tree.InsertItem(_T("Failed to load libraries"), root, TVI_LAST);
+			clientIndex++;
+			continue;
+		}
+		for(size_t i = 0; i < items.GetCount(); i++)
+		{
+			CJellyfinTreeItemData* pData = new CJellyfinTreeItemData();
+			pData->item = items[i];
+			pData->item.isFolder = true;
+			pData->serverIndex = clientIndex;
+			HTREEITEM hItem = m_tree.InsertItem(items[i].name, root, TVI_LAST);
+			m_tree.SetItemData(hItem, (DWORD_PTR)pData);
+			m_tree.InsertItem(_T("Loading..."), hItem, TVI_LAST);
+		}
+		m_tree.Expand(root, TVE_EXPAND);
+		clientIndex++;
 	}
 }
 
@@ -114,7 +136,7 @@ void CJellyfinBrowserDialog::PopulateChildren(HTREEITEM hParent)
 
 	CAtlArray<CJellyfinItem> items;
 	CString error;
-	if(!m_client.GetItems(pData->item.id, items, error))
+	if(pData->serverIndex < 0 || pData->serverIndex >= (int)m_clients.GetCount() || !m_clients[pData->serverIndex]->GetItems(pData->item.id, items, error))
 	{
 		AfxMessageBox(_T("Failed to load Jellyfin items: ") + error);
 		return;
@@ -124,6 +146,7 @@ void CJellyfinBrowserDialog::PopulateChildren(HTREEITEM hParent)
 	{
 		CJellyfinTreeItemData* pChildData = new CJellyfinTreeItemData();
 		pChildData->item = items[i];
+		pChildData->serverIndex = pData->serverIndex;
 
 		HTREEITEM hItem = m_tree.InsertItem(items[i].name, hParent, TVI_LAST);
 		m_tree.SetItemData(hItem, (DWORD_PTR)pChildData);
@@ -152,48 +175,21 @@ void CJellyfinBrowserDialog::PlaySelectedItem()
 	}
 
 	CMainFrame* pFrame = (CMainFrame*)AfxGetMainWnd();
-	if(pFrame)
-		pFrame->OpenJellyfinItem(&m_client, pData->item);
-}
-
-void CJellyfinBrowserDialog::OnLogin()
-{
-	CJellyfinLoginDlg dlg;
-	AppSettings& s = AfxGetAppSettings();
-	dlg.m_server = s.JellyfinServerUrl;
-	dlg.m_username = s.JellyfinUsername;
-
-	if(dlg.DoModal() != IDOK)
-		return;
-
-	m_client.SetServer(dlg.m_server);
-
-	CString error;
-	if(!m_client.AuthenticateByName(dlg.m_username, dlg.m_password, error))
-	{
-		AfxMessageBox(_T("Jellyfin login failed: ") + error);
-		return;
-	}
-
-	s.JellyfinServerUrl = dlg.m_server;
-	s.JellyfinUsername = dlg.m_username;
-	s.JellyfinUserId = m_client.GetUserId();
-	s.JellyfinAccessToken = m_client.GetAccessToken();
-	s.JellyfinDeviceId = m_client.GetDeviceId();
-	s.UpdateData(true);
-
-	PopulateRoot();
-}
-
-void CJellyfinBrowserDialog::OnPlay()
-{
-	PlaySelectedItem();
+	if(pFrame && pData->serverIndex >= 0 && pData->serverIndex < (int)m_clients.GetCount())
+		pFrame->OpenJellyfinItem(m_clients[pData->serverIndex], pData->item);
 }
 
 void CJellyfinBrowserDialog::OnDblClk(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	PlaySelectedItem();
 	*pResult = 0;
+}
+
+void CJellyfinBrowserDialog::OnSize(UINT nType, int cx, int cy)
+{
+	CDialog::OnSize(nType, cx, cy);
+	if(IsWindow(m_tree))
+		m_tree.MoveWindow(4, 4, max(0, cx - 8), max(0, cy - 8));
 }
 
 void CJellyfinBrowserDialog::OnItemExpanding(NMHDR* pNMHDR, LRESULT* pResult)
@@ -211,9 +207,8 @@ void CJellyfinBrowserDialog::OnDestroy()
 }
 
 BEGIN_MESSAGE_MAP(CJellyfinBrowserDialog, CDialog)
-	ON_BN_CLICKED(IDC_JELLYFIN_LOGIN, OnLogin)
-	ON_BN_CLICKED(IDC_JELLYFIN_PLAY, OnPlay)
 	ON_NOTIFY(NM_DBLCLK, IDC_JELLYFIN_TREE, OnDblClk)
 	ON_NOTIFY(TVN_ITEMEXPANDING, IDC_JELLYFIN_TREE, OnItemExpanding)
+	ON_WM_SIZE()
 	ON_WM_DESTROY()
 END_MESSAGE_MAP()

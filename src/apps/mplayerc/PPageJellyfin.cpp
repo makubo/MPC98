@@ -41,7 +41,7 @@ BOOL CPPageJellyfin::OnInitDialog()
 	CComboBox* pMode = (CComboBox*)GetDlgItem(IDC_JF_STREAMMODE);
 	pMode->AddString(_T("Direct play"));
 	pMode->AddString(_T("Progressive transcode"));
-	pMode->AddString(_T("HLS (not available yet)"));
+	pMode->AddString(_T("HLS"));
 
 	CComboBox* pVideo = (CComboBox*)GetDlgItem(IDC_JF_VCODEC);
 	pVideo->AddString(_T("mpeg2video"));

@@ -12,8 +12,9 @@
 struct CJellyfinTreeItemData
 {
 	CJellyfinItem item;
+	int serverIndex;
 	bool childrenLoaded;
-	CJellyfinTreeItemData() : childrenLoaded(false) {}
+	CJellyfinTreeItemData() : serverIndex(-1), childrenLoaded(false) {}
 };
 
 class CJellyfinBrowserDialog : public CDialog
@@ -25,8 +26,9 @@ public:
 	enum { IDD = IDD_JELLYFIN_BAR };
 
 	BOOL Create(CWnd* pParentWnd);
+	void ReloadServers();
 
-	CJellyfinClient m_client;
+	CAtlArray<CJellyfinClient*> m_clients;
 
 protected:
 	CTreeCtrl m_tree;
@@ -34,10 +36,9 @@ protected:
 	virtual void DoDataExchange(CDataExchange* pDX);
 	virtual BOOL OnInitDialog();
 
-	afx_msg void OnLogin();
-	afx_msg void OnPlay();
 	afx_msg void OnDblClk(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnItemExpanding(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnDestroy();
 
 	DECLARE_MESSAGE_MAP()

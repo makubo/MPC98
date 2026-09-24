@@ -4464,6 +4464,7 @@ void CMainFrame::OnUpdateViewCapture(CCmdUI* pCmdUI)
 
 void CMainFrame::OnViewJellyfin()
 {
+	m_wndJellyfinBar.m_dlg.ReloadServers();
 	ShowControlBar(&m_wndJellyfinBar, !m_wndJellyfinBar.IsWindowVisible(), TRUE);
 }
 
@@ -4478,6 +4479,7 @@ void CMainFrame::OnFileOpenJellyfin()
 	// "File > Open Jellyfin..." just ensures the browser panel is visible
 	// and focused; login/browsing/playing all happen from within the
 	// panel itself (see CJellyfinBrowserDialog).
+	m_wndJellyfinBar.m_dlg.ReloadServers();
 	if(!m_wndJellyfinBar.IsWindowVisible())
 		ShowControlBar(&m_wndJellyfinBar, TRUE, TRUE);
 	m_wndJellyfinBar.SetFocus();
