@@ -223,6 +223,7 @@ bool CJellyfinClient::ParseItemList(const CJsonValue& root, CAtlArray<CJellyfinI
 		item.type = e["Type"].AsString();
 		item.isFolder = e["IsFolder"].AsBool(false);
 		item.runtimeTicks = e["RunTimeTicks"].AsInt64();
+		item.childCount = (int)e["ChildCount"].AsNumber(0);
 		if(e.HasMember("MediaSources") && e["MediaSources"].IsArray() && e["MediaSources"].arrayValue.GetCount() > 0)
 			item.mediaSourceId = e["MediaSources"].arrayValue[0]["Id"].AsStringA();
 		items.Add(item);
@@ -234,7 +235,7 @@ bool CJellyfinClient::GetLibraries(CAtlArray<CJellyfinItem>& items, CString& err
 {
 	items.RemoveAll();
 	CString path;
-	path.Format(_T("/Users/%s/Views"), m_userId);
+	path.Format(_T("/Users/%s/Views?Fields=ChildCount"), m_userId);
 
 	CStringA response;
 	if(!DoRequest(_T("GET"), path, "", response, error))
@@ -253,7 +254,7 @@ bool CJellyfinClient::GetItems(CString parentId, CAtlArray<CJellyfinItem>& items
 {
 	items.RemoveAll();
 	CString path;
-	path.Format(_T("/Users/%s/Items?ParentId=%s&SortBy=SortName&Fields=MediaSources,RunTimeTicks"),
+	path.Format(_T("/Users/%s/Items?ParentId=%s&SortBy=SortName&Fields=MediaSources,RunTimeTicks,ChildCount"),
 		m_userId, UrlEncode(parentId));
 
 	CStringA response;

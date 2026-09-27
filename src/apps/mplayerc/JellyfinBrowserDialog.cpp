@@ -109,13 +109,14 @@ void CJellyfinBrowserDialog::PopulateRoot()
 		}
 		for(size_t i = 0; i < items.GetCount(); i++)
 		{
+			if(items[i].isFolder && items[i].childCount == 0) continue;
 			CJellyfinTreeItemData* pData = new CJellyfinTreeItemData();
 			pData->item = items[i];
 			pData->item.isFolder = true;
 			pData->serverIndex = clientIndex;
 			HTREEITEM hItem = m_tree.InsertItem(items[i].name, root, TVI_LAST);
 			m_tree.SetItemData(hItem, (DWORD_PTR)pData);
-			m_tree.InsertItem(_T("Loading..."), hItem, TVI_LAST);
+			if(pData->item.childCount > 0) m_tree.InsertItem(_T("Loading..."), hItem, TVI_LAST);
 		}
 		m_tree.Expand(root, TVE_EXPAND);
 		clientIndex++;
@@ -144,6 +145,7 @@ void CJellyfinBrowserDialog::PopulateChildren(HTREEITEM hParent)
 
 	for(size_t i = 0; i < items.GetCount(); i++)
 	{
+		if(items[i].isFolder && items[i].childCount == 0) continue;
 		CJellyfinTreeItemData* pChildData = new CJellyfinTreeItemData();
 		pChildData->item = items[i];
 		pChildData->serverIndex = pData->serverIndex;
@@ -151,7 +153,7 @@ void CJellyfinBrowserDialog::PopulateChildren(HTREEITEM hParent)
 		HTREEITEM hItem = m_tree.InsertItem(items[i].name, hParent, TVI_LAST);
 		m_tree.SetItemData(hItem, (DWORD_PTR)pChildData);
 
-		if(items[i].isFolder)
+		if(items[i].isFolder && items[i].childCount > 0)
 			m_tree.InsertItem(_T("Loading..."), hItem, TVI_LAST);
 	}
 

@@ -18,8 +18,9 @@ struct CJellyfinItem
 	bool isFolder;
 	CStringA mediaSourceId; // used when requesting PlaybackInfo/stream
 	__int64 runtimeTicks;
+	int childCount;
 
-	CJellyfinItem() : isFolder(false), runtimeTicks(0) {}
+	CJellyfinItem() : isFolder(false), runtimeTicks(0), childCount(0) {}
 };
 
 struct CJellyfinPlaybackInfo
