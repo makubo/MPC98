@@ -32,6 +32,14 @@ struct CJellyfinPlaybackInfo
 	CJellyfinPlaybackInfo() : supportsDirectPlay(false) {}
 };
 
+struct CJellyfinAudioStream
+{
+    int index;
+    CString title;
+    bool isDefault;
+    CJellyfinAudioStream() : index(-1), isDefault(false) {}
+};
+
 class CJellyfinClient
 {
 public:
@@ -54,12 +62,13 @@ public:
 
 	// Children of a folder/series/season, from /Users/{id}/Items?ParentId=...
 	bool GetItems(CString parentId, CAtlArray<CJellyfinItem>& items, CString& error);
+	bool GetAudioStreams(const CJellyfinItem& item, CAtlArray<CJellyfinAudioStream>& streams, CString& error);
 	bool GetPlaybackInfo(const CJellyfinItem& item, CJellyfinPlaybackInfo& info, CString& error);
 	bool GetDirectPlayStreamUrl(const CJellyfinItem& item, const CJellyfinPlaybackInfo& info,
 		CString& streamUrl, CString& playSessionId, CStringA& mediaSourceId, CString& error);
 	bool GetHlsStreamUrl(const CJellyfinItem& item, CString& streamUrl,
 		CString& playSessionId, CStringA& mediaSourceId, CString& error,
-		__int64 startTimeTicks = 0);
+		__int64 startTimeTicks = 0, int audioStreamIndex = -1);
 
 	// Resolves a playable URL for an item. Per project requirements, this
 	// ALWAYS forces the Jellyfin server to transcode the media into a
@@ -74,7 +83,7 @@ public:
 	// ReportPlaybackStart/Progress/Stopped) and mediaSourceId.
 	bool GetTranscodedStreamUrl(const CJellyfinItem& item, CString& streamUrl,
 		CString& playSessionId, CStringA& mediaSourceId, CString& error,
-		__int64 startTimeTicks = 0);
+		__int64 startTimeTicks = 0, int audioStreamIndex = -1);
 
 	// Playback session reporting, so the Jellyfin server (a) shows accurate
 	// "Now Playing" state and (b) tears down the ffmpeg transcode process

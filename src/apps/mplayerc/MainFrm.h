@@ -181,13 +181,15 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 	DWORD m_jellyfinClockLastTick;
 	bool m_jellyfinProgressive;
 	bool m_jellyfinSessionActive;
+	CAtlArray<CJellyfinAudioStream> m_jellyfinAudioStreams;
+	int m_jellyfinAudioStreamIndex;
 
 	void UpdateJellyfinClock();
 	REFERENCE_TIME GetJellyfinPosition() const;
 
 public:
 	void OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item,
-		REFERENCE_TIME rtStart = 0);
+		REFERENCE_TIME rtStart = 0, int audioStreamIndex = -1);
 
 private:
 

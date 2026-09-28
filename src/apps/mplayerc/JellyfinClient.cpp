@@ -294,6 +294,43 @@ bool CJellyfinClient::GetPlaybackInfo(const CJellyfinItem& item, CJellyfinPlayba
 	return true;
 }
 
+bool CJellyfinClient::GetAudioStreams(const CJellyfinItem& item, CAtlArray<CJellyfinAudioStream>& streams, CString& error)
+{
+    streams.RemoveAll();
+    CStringA response;
+    CString path;
+    path.Format(_T("/Items/%s/PlaybackInfo?UserId=%s"), item.id, m_userId);
+    if(!DoRequest(_T("GET"), path, "", response, error)) return false;
+
+    CJsonValue root;
+    if(!ParseJson(response, root) || !root["MediaSources"].IsArray() || root["MediaSources"].arrayValue.GetCount() == 0)
+    {
+        error = _T("PlaybackInfo did not include audio streams");
+        return false;
+    }
+
+    const CJsonValue& mediaStreams = root["MediaSources"].arrayValue[0]["MediaStreams"];
+    if(!mediaStreams.IsArray()) return true;
+    for(size_t i = 0; i < mediaStreams.arrayValue.GetCount(); i++)
+    {
+        const CJsonValue& stream = mediaStreams.arrayValue[i];
+        if(stream["Type"].AsString().CompareNoCase(_T("Audio"))) continue;
+        CJellyfinAudioStream audio;
+        audio.index = (int)stream["Index"].AsNumber(-1);
+        audio.title = stream["DisplayTitle"].AsString();
+        if(audio.title.IsEmpty())
+        {
+            audio.title = stream["Language"].AsString();
+            CString codec = stream["Codec"].AsString();
+            if(!codec.IsEmpty()) audio.title += audio.title.IsEmpty() ? codec : _T(" - ") + codec;
+        }
+        if(audio.title.IsEmpty()) audio.title.Format(_T("Audio %d"), audio.index + 1);
+        audio.isDefault = stream["IsDefault"].AsBool(false);
+        streams.Add(audio);
+    }
+    return true;
+}
+
 bool CJellyfinClient::GetDirectPlayStreamUrl(const CJellyfinItem& item, const CJellyfinPlaybackInfo& info,
 	CString& streamUrl, CString& playSessionId, CStringA& mediaSourceId, CString& error)
 {
@@ -323,7 +360,7 @@ bool CJellyfinClient::GetDirectPlayStreamUrl(const CJellyfinItem& item, const CJ
 }
 
 bool CJellyfinClient::GetHlsStreamUrl(const CJellyfinItem& item, CString& streamUrl,
-	CString& playSessionId, CStringA& mediaSourceId, CString& error, __int64 startTimeTicks)
+	CString& playSessionId, CStringA& mediaSourceId, CString& error, __int64 startTimeTicks, int audioStreamIndex)
 {
     if(playSessionId.IsEmpty()) playSessionId = NewGuid();
     mediaSourceId = item.mediaSourceId;
@@ -349,6 +386,7 @@ bool CJellyfinClient::GetHlsStreamUrl(const CJellyfinItem& item, CString& stream
 	if(s.JellyfinMaxWidth > 0) { CString q; q.Format(_T("&MaxWidth=%d"), s.JellyfinMaxWidth); path += q; }
 	if(s.JellyfinMaxHeight > 0) { CString q; q.Format(_T("&MaxHeight=%d"), s.JellyfinMaxHeight); path += q; }
 	if(s.JellyfinMaxFramerate > 0) { CString q; q.Format(_T("&MaxFramerate=%d"), s.JellyfinMaxFramerate); path += q; }
+	if(audioStreamIndex >= 0) { CString q; q.Format(_T("&AudioStreamIndex=%d"), audioStreamIndex); path += q; }
 	if(!s.JellyfinAudioCodec.CompareNoCase(_T("mp2")) || !s.JellyfinAudioCodec.CompareNoCase(_T("mp3")))
 		path += _T("&MaxAudioChannels=2&TranscodingMaxAudioChannels=2");
     if(m_serverUrl.Left(7).CompareNoCase(_T("http://")) != 0)
@@ -367,7 +405,7 @@ bool CJellyfinClient::GetHlsStreamUrl(const CJellyfinItem& item, CString& stream
 }
 
 bool CJellyfinClient::GetTranscodedStreamUrl(const CJellyfinItem& item, CString& streamUrl,
-	CString& playSessionId, CStringA& mediaSourceId, CString& error, __int64 startTimeTicks)
+	CString& playSessionId, CStringA& mediaSourceId, CString& error, __int64 startTimeTicks, int audioStreamIndex)
 {
 	// Ask the server to always transcode: Static is intentionally omitted
 	// (defaults to false) and we specify a codec/container pair that MPC
@@ -400,6 +438,7 @@ bool CJellyfinClient::GetTranscodedStreamUrl(const CJellyfinItem& item, CString&
 	if(s.JellyfinMaxWidth > 0) { CString q; q.Format(_T("&MaxWidth=%d"), s.JellyfinMaxWidth); path += q; }
 	if(s.JellyfinMaxHeight > 0) { CString q; q.Format(_T("&MaxHeight=%d"), s.JellyfinMaxHeight); path += q; }
 	if(s.JellyfinMaxFramerate > 0) { CString q; q.Format(_T("&MaxFramerate=%d"), s.JellyfinMaxFramerate); path += q; }
+	if(audioStreamIndex >= 0) { CString q; q.Format(_T("&AudioStreamIndex=%d"), audioStreamIndex); path += q; }
 
 	// MPEG audio layer II and III are legacy stereo formats. Jellyfin otherwise
 	// inherits a BD source's 5.1 channel count and invokes ffmpeg with `-ac 6`,

@@ -400,7 +400,8 @@ CMainFrame::CMainFrame() :
 	m_jellyfinElapsedTicks(0),
 	m_jellyfinClockLastTick(0),
 	m_jellyfinProgressive(false),
-	m_jellyfinSessionActive(false)
+	m_jellyfinSessionActive(false),
+	m_jellyfinAudioStreamIndex(-1)
 {
 }
 
@@ -4485,7 +4486,7 @@ void CMainFrame::OnFileOpenJellyfin()
 	m_wndJellyfinBar.SetFocus();
 }
 
-void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item, REFERENCE_TIME rtStart)
+void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item, REFERENCE_TIME rtStart, int audioStreamIndex)
 {
 	if(!pClient || item.isFolder)
 		return;
@@ -4494,12 +4495,20 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 
 	CString url, playSessionId, error;
 	CStringA mediaSourceId;
+	CAtlArray<CJellyfinAudioStream> audioStreams;
+	pClient->GetAudioStreams(item, audioStreams, error); // playback still works if metadata is unavailable
+	if(audioStreamIndex < 0)
+	{
+		for(size_t i = 0; i < audioStreams.GetCount(); i++)
+			if(audioStreams[i].isDefault) { audioStreamIndex = audioStreams[i].index; break; }
+	}
+	if(audioStreamIndex < 0 && audioStreams.GetCount()) audioStreamIndex = audioStreams[0].index;
 	bool fDirectPlay = false;
 	bool fHls = false;
 	AppSettings& s = AfxGetAppSettings();
 	if(s.JellyfinStreamingMode == CMPlayerCApp::JFSM_HLS)
 	{
-		fHls = pClient->GetHlsStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart);
+		fHls = pClient->GetHlsStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart, audioStreamIndex);
 		if(!fHls)
 		{
 			AfxMessageBox(_T("Failed to resolve Jellyfin HLS stream: ") + error);
@@ -4519,7 +4528,7 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 		}
 	}
 
-	if(!fDirectPlay && !fHls && !pClient->GetTranscodedStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart))
+	if(!fDirectPlay && !fHls && !pClient->GetTranscodedStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart, audioStreamIndex))
 	{
 		AfxMessageBox(_T("Failed to resolve Jellyfin stream: ") + error);
 		return;
@@ -4548,6 +4557,8 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 	// DirectShow IAsyncReader position stays at zero, so they share the
 	// Jellyfin elapsed-time clock and server-side restart seek path.
 	m_jellyfinProgressive = !fDirectPlay;
+	m_jellyfinAudioStreams.Copy(audioStreams);
+	m_jellyfinAudioStreamIndex = audioStreamIndex;
 	m_jellyfinSessionActive = true;
 	if(item.runtimeTicks > 0)
 		m_rtDurationOverride = item.runtimeTicks;
@@ -5543,6 +5554,18 @@ void CMainFrame::OnUpdatePlayShaders(CCmdUI* pCmdUI)
 void CMainFrame::OnPlayAudio(UINT nID)
 {
 	int i = (int)nID - (1 + ID_AUDIO_SUBITEM_START);
+	if(m_jellyfinSessionActive)
+	{
+		if(i >= 0 && i < (int)m_jellyfinAudioStreams.GetCount() && m_jellyfinProgressive && m_pJellyfinActiveClient)
+		{
+			CJellyfinItem item;
+			item.id = m_jellyfinItemId;
+			item.mediaSourceId = m_jellyfinMediaSourceId;
+			item.runtimeTicks = m_jellyfinDurationTicks;
+			OpenJellyfinItem(m_pJellyfinActiveClient, item, GetJellyfinPosition(), m_jellyfinAudioStreams[i].index);
+		}
+		return;
+	}
 
 	CComQIPtr<IAMStreamSelect> pSS = FindFilter(__uuidof(CAudioSwitcherFilter), pGB);
 	if(!pSS) pSS = FindFilter(L"{D3CD7858-971A-4838-ACEC-40CA5D529DC8}", pGB);
@@ -5561,6 +5584,15 @@ void CMainFrame::OnUpdatePlayAudio(CCmdUI* pCmdUI)
 {
 	UINT nID = pCmdUI->m_nID;
 	int i = (int)nID - (1 + ID_AUDIO_SUBITEM_START);
+	if(m_jellyfinSessionActive)
+	{
+		if(i >= 0 && i < (int)m_jellyfinAudioStreams.GetCount())
+		{
+			pCmdUI->Enable(m_jellyfinProgressive);
+			pCmdUI->SetRadio(m_jellyfinAudioStreams[i].index == m_jellyfinAudioStreamIndex);
+		}
+		return;
+	}
 
 	CComQIPtr<IAMStreamSelect> pSS = FindFilter(__uuidof(CAudioSwitcherFilter), pGB);
 	if(!pSS) pSS = FindFilter(L"{D3CD7858-971A-4838-ACEC-40CA5D529DC8}", pGB);
@@ -8592,6 +8624,16 @@ void CMainFrame::SetupAudioSwitcherSubMenu()
 	if(m_iMediaLoadState == MLS_LOADED)
 	{
 		UINT id = ID_AUDIO_SUBITEM_START;
+		if(m_jellyfinSessionActive)
+		{
+			for(size_t i = 0; i < m_jellyfinAudioStreams.GetCount() && id < ID_AUDIO_SUBITEM_END; i++)
+			{
+				CString name = m_jellyfinAudioStreams[i].title;
+				name.Replace(_T("&"), _T("&&"));
+				pSub->AppendMenu(MF_BYCOMMAND | MF_STRING | (m_jellyfinProgressive ? MF_ENABLED : (MF_DISABLED | MF_GRAYED)), ++id, name);
+			}
+			return;
+		}
 
 		CComQIPtr<IAMStreamSelect> pSS = FindFilter(__uuidof(CAudioSwitcherFilter), pGB);
 		if(!pSS) pSS = FindFilter(L"{D3CD7858-971A-4838-ACEC-40CA5D529DC8}", pGB);
@@ -9555,7 +9597,7 @@ void CMainFrame::SeekTo(REFERENCE_TIME rtPos, bool fSeekToKeyFrame)
 		item.id = m_jellyfinItemId;
 		item.mediaSourceId = m_jellyfinMediaSourceId;
 		item.runtimeTicks = m_jellyfinDurationTicks;
-		OpenJellyfinItem(m_pJellyfinActiveClient, item, rtPos);
+		OpenJellyfinItem(m_pJellyfinActiveClient, item, rtPos, m_jellyfinAudioStreamIndex);
 		return;
 	}
 
@@ -10197,6 +10239,8 @@ void CMainFrame::CloseMedia()
 		m_jellyfinElapsedTicks = 0;
 		m_jellyfinClockLastTick = 0;
 		m_jellyfinProgressive = false;
+		m_jellyfinAudioStreams.RemoveAll();
+		m_jellyfinAudioStreamIndex = -1;
 	}
 
 	m_iMediaLoadState = MLS_CLOSING;
