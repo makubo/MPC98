@@ -25,8 +25,6 @@ class CHlsStream : public CAsyncStream, public CAMThread
     bool ParsePlaylist(const CString& playlistUrl, const CStringA& text, CAtlList<CString>& segments, CString& variantUrl);
     CString ResolveUrl(const CString& baseUrl, const CStringA& relative) const;
     __int64 GetRuntimeTicks(const CString& url) const;
-    void Log(const CString& text) const;
-    void SaveDiagnosticCopy() const;
     DWORD ThreadProc();
 
 public:

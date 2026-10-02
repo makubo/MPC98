@@ -438,7 +438,6 @@ bool CJellyfinClient::GetTranscodedStreamUrl(const CJellyfinItem& item, CString&
 	if(s.JellyfinMaxWidth > 0) { CString q; q.Format(_T("&MaxWidth=%d"), s.JellyfinMaxWidth); path += q; }
 	if(s.JellyfinMaxHeight > 0) { CString q; q.Format(_T("&MaxHeight=%d"), s.JellyfinMaxHeight); path += q; }
 	if(s.JellyfinMaxFramerate > 0) { CString q; q.Format(_T("&MaxFramerate=%d"), s.JellyfinMaxFramerate); path += q; }
-	if(!s.JellyfinVideoCodec.CompareNoCase(_T("mpeg4"))) path += _T("&CodecTag=XVID");
 	if(s.JellyfinAudioSampleRate > 0) { CString q; q.Format(_T("&AudioSampleRate=%d"), s.JellyfinAudioSampleRate); path += q; }
 	if(audioStreamIndex >= 0) { CString q; q.Format(_T("&AudioStreamIndex=%d"), audioStreamIndex); path += q; }
 

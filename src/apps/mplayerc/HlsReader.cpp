@@ -4,30 +4,6 @@
 
 #define HLS_INITIAL_BUFFER (512*1024)
 
-void CHlsStream::Log(const CString& text) const
-{
-    TCHAR module[MAX_PATH];
-    if(!GetModuleFileName(NULL, module, MAX_PATH)) return;
-    CString path(module);
-    int slash = path.ReverseFind(_T('\\'));
-    if(slash < 0) return;
-    path = path.Left(slash + 1) + _T("hls_debug.txt");
-    FILE* f = _tfopen(path, _T("at"));
-    if(f) { _ftprintf(f, _T("%s\n"), text); fclose(f); }
-}
-
-void CHlsStream::SaveDiagnosticCopy() const
-{
-    if(m_tempFile.IsEmpty()) return;
-    TCHAR module[MAX_PATH];
-    if(!GetModuleFileName(NULL, module, MAX_PATH)) return;
-    CString path(module);
-    int slash = path.ReverseFind(_T('\\'));
-    if(slash < 0) return;
-    path = path.Left(slash + 1) + _T("hls_last.ts");
-    CopyFile(m_tempFile, path, FALSE);
-}
-
 CHlsReader::CHlsReader(IUnknown* pUnk, HRESULT* phr)
     : CAsyncReader(NAME("CHlsReader"), pUnk, &m_stream, phr, __uuidof(this))
 {
@@ -162,9 +138,6 @@ bool CHlsStream::AppendUrl(CInternetSession& session, const CString& url)
             m_len += len;
         }
         f->Close();
-        CString line;
-        line.Format(_T("segment complete: %d bytes total"), (int)m_len);
-        Log(line);
     }
     catch(CInternetException* e)
     {
@@ -238,8 +211,6 @@ bool CHlsStream::Load(const WCHAR* url)
     {
         m_authHeader.Format(_T("Authorization: MediaBrowser Client=\"MPC98\", Device=\"Windows\", DeviceId=\"%s\", Version=\"6.4.9.1\", Token=\"%s\"\r\n"), device, token);
     }
-    Log(_T("HLS load started"));
-
     TCHAR path[MAX_PATH], file[MAX_PATH];
     if(!GetTempPath(MAX_PATH, path) || !GetTempFileName(path, _T("MPC"), 0, file)) return false;
     m_tempFile = file;
@@ -257,10 +228,6 @@ bool CHlsStream::Load(const WCHAR* url)
     // CMpegSplitterFile probes several PAT/PMT/PES regions while creating
     // outputs. Do not expose a single short HLS segment as a source; wait
     // for a stable startup cache unless a complete small VOD has ended.
-    CString status;
-    status.Format(_T("HLS startup: available=%I64d finished=%d failed=%d"), m_len, m_finished, m_failed);
-    Log(status);
-    SaveDiagnosticCopy();
     return (m_len >= HLS_INITIAL_BUFFER || m_finished && m_len > 0) && !m_failed;
 }
 
@@ -322,7 +289,6 @@ DWORD CHlsStream::ThreadProc()
             CString variant;
             if(!DownloadUrl(session, playlist, text) || !ParsePlaylist(playlist, text, segments, variant))
             {
-                Log(_T("HLS master playlist download/parse failed"));
                 m_failed = true;
                 continue;
             }
@@ -331,7 +297,6 @@ DWORD CHlsStream::ThreadProc()
                 segments.RemoveAll();
                 if(!DownloadUrl(session, variant, text) || !ParsePlaylist(variant, text, segments, variant))
                 {
-                    Log(_T("HLS variant playlist download/parse failed"));
                     m_failed = true;
                     continue;
                 }
@@ -357,14 +322,11 @@ DWORD CHlsStream::ThreadProc()
                 while(segments.GetHeadPosition() != first)
                     segments.RemoveHead();
             }
-            CString status;
-            status.Format(_T("HLS playlist parsed: %d segments"), (int)segments.GetCount());
-            Log(status);
             POSITION pos = segments.GetHeadPosition();
             while(pos)
             {
                 if(CheckRequest(NULL)) break;
-                if(!AppendUrl(session, segments.GetNext(pos))) { Log(_T("HLS segment download failed")); m_failed = true; break; }
+                if(!AppendUrl(session, segments.GetNext(pos))) { m_failed = true; break; }
             }
             m_finished = true;
         }
