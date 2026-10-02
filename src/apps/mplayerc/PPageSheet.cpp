@@ -35,7 +35,6 @@ CPPageSheet::CPPageSheet(LPCTSTR pszCaption, IFilterGraph* pFG, CWnd* pParentWnd
 	, m_audioswitcher(pFG)
 {
 	AddPage(&m_player);
-	AddPage(&m_jellyfinServers);
 	AddPage(&m_formats);
 	AddPage(&m_acceltbl);
 	AddPage(&m_logo);

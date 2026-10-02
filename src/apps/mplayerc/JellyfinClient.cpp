@@ -438,13 +438,22 @@ bool CJellyfinClient::GetTranscodedStreamUrl(const CJellyfinItem& item, CString&
 	if(s.JellyfinMaxWidth > 0) { CString q; q.Format(_T("&MaxWidth=%d"), s.JellyfinMaxWidth); path += q; }
 	if(s.JellyfinMaxHeight > 0) { CString q; q.Format(_T("&MaxHeight=%d"), s.JellyfinMaxHeight); path += q; }
 	if(s.JellyfinMaxFramerate > 0) { CString q; q.Format(_T("&MaxFramerate=%d"), s.JellyfinMaxFramerate); path += q; }
+	if(!s.JellyfinVideoCodec.CompareNoCase(_T("mpeg4"))) path += _T("&CodecTag=XVID");
+	if(s.JellyfinAudioSampleRate > 0) { CString q; q.Format(_T("&AudioSampleRate=%d"), s.JellyfinAudioSampleRate); path += q; }
 	if(audioStreamIndex >= 0) { CString q; q.Format(_T("&AudioStreamIndex=%d"), audioStreamIndex); path += q; }
 
 	// MPEG audio layer II and III are legacy stereo formats. Jellyfin otherwise
 	// inherits a BD source's 5.1 channel count and invokes ffmpeg with `-ac 6`,
 	// which the MP2/MP3 encoders reject (ffmpeg EINVAL / Jellyfin exit code 234).
 	// Keep the legacy profile playable by explicitly downmixing these codecs.
-	if(!s.JellyfinAudioCodec.CompareNoCase(_T("mp2")) || !s.JellyfinAudioCodec.CompareNoCase(_T("mp3")))
+	if(s.JellyfinAudioChannels > 0)
+	{
+		CString q;
+		q.Format(_T("&AudioChannels=%d&MaxAudioChannels=%d&TranscodingMaxAudioChannels=%d"),
+			s.JellyfinAudioChannels, s.JellyfinAudioChannels, s.JellyfinAudioChannels);
+		path += q;
+	}
+	else if(!s.JellyfinAudioCodec.CompareNoCase(_T("mp2")) || !s.JellyfinAudioCodec.CompareNoCase(_T("mp3")))
 		path += _T("&MaxAudioChannels=2&TranscodingMaxAudioChannels=2");
 
 	if(!mediaSourceId.IsEmpty())

@@ -495,12 +495,12 @@ public:
 		CString JellyfinVideoCodec, JellyfinAudioCodec, JellyfinContainer;
 		int JellyfinVideoBitrate, JellyfinAudioBitrate, JellyfinMaxStreamingBitrate;
 		int JellyfinMaxWidth, JellyfinMaxHeight, JellyfinMaxFramerate;
+		int JellyfinAudioSampleRate, JellyfinAudioChannels;
 		struct JellyfinServer
 		{
 			CString name, url, username, userId, accessToken, deviceId;
 		};
 		CAtlArray<JellyfinServer> JellyfinServers;
-		int JellyfinActiveServer;
 
 		struct Shader {CString label, target, srcdata;};
 		CAtlList<Shader> m_shaders;

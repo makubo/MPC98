@@ -29,7 +29,6 @@ using namespace TreePropSheet;
 #include "PPageLogo.h"
 #include "PPagePlayback.h"
 #include "PPageJellyfin.h"
-#include "PPageJellyfinServers.h"
 #include "PPageDVD.h"
 #include "PPageOutput.h"
 #include "PPageWebServer.h"
@@ -69,7 +68,6 @@ private:
 	CPPageLogo m_logo;
 	CPPagePlayback m_playback;
 	CPPageJellyfin m_jellyfin;
-	CPPageJellyfinServers m_jellyfinServers;
 	CPPageDVD m_dvd;
 	CPPageOutput m_output;
 	CPPageWebServer m_webserver;

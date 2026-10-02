@@ -1313,10 +1313,11 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXWIDTH), JellyfinMaxWidth);
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXHEIGHT), JellyfinMaxHeight);
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXFRAMERATE), JellyfinMaxFramerate);
+		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_ASAMPLERATE), JellyfinAudioSampleRate);
+		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_ACHANNELS), JellyfinAudioChannels);
 
 		pApp->WriteProfileString(_T("JellyfinServers"), NULL, NULL);
 		pApp->WriteProfileInt(_T("JellyfinServers"), _T("Count"), JellyfinServers.GetCount());
-		pApp->WriteProfileInt(_T("JellyfinServers"), _T("Active"), JellyfinActiveServer);
 		for(size_t i = 0; i < JellyfinServers.GetCount(); i++)
 		{
 			CString section;
@@ -1695,6 +1696,8 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 		JellyfinMaxWidth = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXWIDTH), 0);
 		JellyfinMaxHeight = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXHEIGHT), 0);
 		JellyfinMaxFramerate = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MAXFRAMERATE), 0);
+		JellyfinAudioSampleRate = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_ASAMPLERATE), 0);
+		JellyfinAudioChannels = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_ACHANNELS), 0);
 
 		JellyfinServers.RemoveAll();
 		int serverCount = pApp->GetProfileInt(_T("JellyfinServers"), _T("Count"), 0);
@@ -1710,17 +1713,6 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 			server.accessToken = pApp->GetProfileString(section, _T("Token"), _T(""));
 			server.deviceId = pApp->GetProfileString(section, _T("DeviceId"), _T(""));
 			if(!server.url.IsEmpty()) JellyfinServers.Add(server);
-		}
-		JellyfinActiveServer = pApp->GetProfileInt(_T("JellyfinServers"), _T("Active"), 0);
-		if(JellyfinActiveServer < 0 || JellyfinActiveServer >= (int)JellyfinServers.GetCount()) JellyfinActiveServer = 0;
-		if(!JellyfinServers.IsEmpty())
-		{
-			const JellyfinServer& server = JellyfinServers[JellyfinActiveServer];
-			JellyfinServerUrl = server.url;
-			JellyfinUsername = server.username;
-			JellyfinUserId = server.userId;
-			JellyfinAccessToken = server.accessToken;
-			JellyfinDeviceId = server.deviceId;
 		}
 
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), _T("LastUsedPage"), 0);

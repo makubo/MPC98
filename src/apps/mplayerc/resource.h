@@ -323,7 +323,6 @@
 #define IDD_JELLYFIN_LOGIN              10052
 #define IDD_JELLYFIN_BAR                10053
 #define IDD_PPAGEJELLYFIN               10054
-#define IDD_PPAGEJELLYFINSERVERS        10055
 #define IDC_COMBO1                      11000
 #define IDC_COMBO2                      11001
 #define IDC_COMBO3                      11002
@@ -478,7 +477,8 @@
 #define IDC_JF_SERVERADD                 12152
 #define IDC_JF_SERVEREDIT                12153
 #define IDC_JF_SERVERREMOVE              12154
-#define IDC_JF_SERVERACTIVE              12155
+#define IDC_JF_ASAMPLERATE                12156
+#define IDC_JF_ACHANNELS                  12157
 
 #define IDS_R_SETTINGS                  13000
 #define IDS_RS_TITLEBARTEXTSTYLE        13001
@@ -768,6 +768,8 @@
 #define IDS_RS_JELLYFIN_MAXWIDTH        14208
 #define IDS_RS_JELLYFIN_MAXHEIGHT       14209
 #define IDS_RS_JELLYFIN_MAXFRAMERATE    14210
+#define IDS_RS_JELLYFIN_ASAMPLERATE      14211
+#define IDS_RS_JELLYFIN_ACHANNELS        14212
 
 // Next default values for new objects
 // 
