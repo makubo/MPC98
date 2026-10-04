@@ -753,11 +753,6 @@
 #define IDS_RS_SUBDELAYINTERVAL         14193
 #define ID_FILE_OPENJELLYFIN            14194
 #define ID_VIEW_JELLYFIN                14195
-#define IDS_RS_JELLYFIN_URL             14196
-#define IDS_RS_JELLYFIN_USER            14197
-#define IDS_RS_JELLYFIN_USERID          14198
-#define IDS_RS_JELLYFIN_TOKEN           14199
-#define IDS_RS_JELLYFIN_DEVICEID        14200
 #define IDS_RS_JELLYFIN_MODE            14201
 #define IDS_RS_JELLYFIN_VCODEC          14202
 #define IDS_RS_JELLYFIN_ACODEC          14203

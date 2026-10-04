@@ -1298,11 +1298,11 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 
 		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_ISDB), ISDb);
 
-		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_URL), JellyfinServerUrl);
-		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_USER), JellyfinUsername);
-		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_USERID), JellyfinUserId);
-		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_TOKEN), JellyfinAccessToken);
-		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_DEVICEID), JellyfinDeviceId);
+		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), _T("JellyfinServerUrl"), NULL);
+		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), _T("JellyfinUsername"), NULL);
+		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), _T("JellyfinUserId"), NULL);
+		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), _T("JellyfinAccessToken"), NULL);
+		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), _T("JellyfinDeviceId"), NULL);
 		pApp->WriteProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MODE), JellyfinStreamingMode);
 		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_VCODEC), JellyfinVideoCodec);
 		pApp->WriteProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_ACODEC), JellyfinAudioCodec);
@@ -1676,11 +1676,6 @@ void CMPlayerCApp::Settings::UpdateData(bool fSave)
 
 		ISDb = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_ISDB), _T("www.opensubtitles.org/isdb"));
 
-		JellyfinServerUrl = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_URL), _T(""));
-		JellyfinUsername = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_USER), _T(""));
-		JellyfinUserId = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_USERID), _T(""));
-		JellyfinAccessToken = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_TOKEN), _T(""));
-		JellyfinDeviceId = pApp->GetProfileString(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_DEVICEID), _T(""));
 		JellyfinStreamingMode = pApp->GetProfileInt(ResStr(IDS_R_SETTINGS), ResStr(IDS_RS_JELLYFIN_MODE), JFSM_PROGRESSIVE_TRANSCODE);
 		// Version 1 exposed "Prefer direct play" as value 0. That mode
 		// had an unreliable fallback, so migrate it to strict direct play.

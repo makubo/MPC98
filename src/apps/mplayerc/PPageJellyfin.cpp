@@ -162,11 +162,6 @@ BOOL CPPageJellyfin::OnApply()
 	s.JellyfinAudioSampleRate = max(0, m_audioSampleRate);
 	s.JellyfinAudioChannels = max(0, m_audioChannels);
 	s.JellyfinServers.Copy(m_serverProfiles);
-	s.JellyfinServerUrl.Empty();
-	s.JellyfinUsername.Empty();
-	s.JellyfinUserId.Empty();
-	s.JellyfinAccessToken.Empty();
-	s.JellyfinDeviceId.Empty();
 	s.UpdateData(true);
 
 	return __super::OnApply();

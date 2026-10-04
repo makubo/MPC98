@@ -486,11 +486,6 @@ public:
 
 		CString ISDb;
 
-		CString JellyfinServerUrl;
-		CString JellyfinUsername;
-		CString JellyfinUserId;
-		CString JellyfinAccessToken;
-		CString JellyfinDeviceId;
 		int JellyfinStreamingMode;
 		CString JellyfinVideoCodec, JellyfinAudioCodec, JellyfinContainer;
 		int JellyfinVideoBitrate, JellyfinAudioBitrate, JellyfinMaxStreamingBitrate;
