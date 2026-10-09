@@ -26,7 +26,7 @@
 #include "..\..\Filters\Filters.h"
 #include "DX7AllocatorPresenter.h"
 #include "DX9AllocatorPresenter.h"
-#include "HlsReader.h"
+#include "..\..\filters\source\hlssource\HlsReader.h"
 #include "DeinterlacerFilter.h"
 #include <initguid.h>
 #include "..\..\..\include\moreuuids.h"
@@ -35,6 +35,21 @@
 #include <Vmr9.h>
 
 //
+
+static CString GetUrlQueryValue(LPCWSTR url, LPCTSTR name)
+{
+    CString value(url);
+    CString key = _T("&") + CString(name) + _T("=");
+    int query = value.Find(_T('?'));
+    int pos = value.Find(key, query >= 0 ? query : 0);
+    if(pos < 0 && query >= 0 && value.Mid(query + 1).Left(_tcslen(name) + 1) == CString(name) + _T("="))
+        pos = query;
+    if(pos < 0) return CString();
+    pos += (pos == query ? 1 : key.GetLength());
+    int end = value.Find(_T('&'), pos);
+    return value.Mid(pos, end < 0 ? value.GetLength() - pos : end - pos);
+}
+
 // CFGManager
 //
 
@@ -397,6 +412,19 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 	CComQIPtr<IFileSourceFilter> pFSF = pBF;
 	if(!pFSF) return E_NOINTERFACE;
 
+	if(CComQIPtr<IHlsSourceConfig> pHlsConfig = pBF)
+	{
+		CString token = GetUrlQueryValue(lpcwstrFileName, _T("MPCAuthToken"));
+		CString device = GetUrlQueryValue(lpcwstrFileName, _T("MPCDeviceId"));
+		CString start = GetUrlQueryValue(lpcwstrFileName, _T("MPCStartTimeTicks"));
+		CString header;
+		if(!token.IsEmpty() && !device.IsEmpty())
+			header.Format(_T("Authorization: MediaBrowser Client=\"MPC98\", Device=\"Windows\", DeviceId=\"%s\", Version=\"6.4.9.1\", Token=\"%s\"\r\n"), device, token);
+		CStringW wideHeader(header);
+		pHlsConfig->SetRequestHeader(wideHeader);
+		pHlsConfig->SetInitialStartTime(start.IsEmpty() ? 0 : _tcstoi64(start, NULL, 10));
+	}
+
 	if(FAILED(hr = AddFilter(pBF, lpcwstrFilterName)))
 		return hr;
 
@@ -617,7 +645,7 @@ STDMETHODIMP CFGManager::Connect(IPin* pPinOut, IPin* pPinIn)
 	}
 	if(fHlsSource)
 	{
-		CFGFilterInternal<CMpegSplitterFilter> hlsSplitter(L"Jellyfin HLS MPEG Splitter", MERIT64_ABOVE_DSHOW);
+		CFGFilterInternal<CMpegSplitterFilter> hlsSplitter(L"HLS MPEG Splitter", MERIT64_ABOVE_DSHOW);
 		CComPtr<IBaseFilter> pBF;
 		CInterfaceList<IUnknown, &IID_IUnknown> pUnks;
 		if(SUCCEEDED(hlsSplitter.Create(&pBF, pUnks))

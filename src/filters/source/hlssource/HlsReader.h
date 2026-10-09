@@ -1,11 +1,18 @@
 #pragma once
 
-#include "..\..\filters\reader\asyncreader\asyncio.h"
-#include "..\..\filters\reader\asyncreader\asyncrdr.h"
+#include <afxinet.h>
+#include "..\..\reader\asyncreader\asyncio.h"
+#include "..\..\reader\asyncreader\asyncrdr.h"
 
-// Minimal HLS reader for Jellyfin's unencrypted MPEG-TS playlists. It
-// presents downloaded segments as one growing, sequential IAsyncReader
-// stream so the existing internal MPEG splitter can do the demuxing.
+[uuid("AEDBD913-6DDE-4A07-AD4D-A4D65013AE65")]
+interface IHlsSourceConfig : public IUnknown
+{
+    STDMETHOD(SetRequestHeader)(LPCWSTR header) PURE;
+    STDMETHOD(SetInitialStartTime)(REFERENCE_TIME rt) PURE;
+};
+
+// Minimal HLS reader for unencrypted MPEG-TS playlists. It presents downloaded
+// segments as one growing, sequential IAsyncReader stream for MPEG splitters.
 class CHlsStream : public CAsyncStream, public CAMThread
 {
     CCritSec m_csLock;
@@ -32,6 +39,8 @@ public:
     virtual ~CHlsStream();
 
     bool Load(const WCHAR* url);
+    void SetRequestHeader(const CString& header) {m_authHeader = header;}
+    void SetInitialStartTime(REFERENCE_TIME rt) {m_startTicks = rt;}
     HRESULT SetPointer(LONGLONG llPos);
     HRESULT Read(PBYTE pbBuffer, DWORD dwBytesToRead, BOOL bAlign, LPDWORD pdwBytesRead);
     LONGLONG Size(LONGLONG* pSizeAvailable);
@@ -41,7 +50,7 @@ public:
 };
 
 [uuid("C6572A0C-2F1B-4A7E-A3A1-DC5BEE3D99D9")]
-class CHlsReader : public CAsyncReader, public IFileSourceFilter
+class CHlsReader : public CAsyncReader, public IFileSourceFilter, public IHlsSourceConfig
 {
     CHlsStream m_stream;
     CStringW m_fn;
@@ -54,4 +63,6 @@ public:
     STDMETHODIMP NonDelegatingQueryInterface(REFIID riid, void** ppv);
     STDMETHODIMP Load(LPCOLESTR pszFileName, const AM_MEDIA_TYPE* pmt);
     STDMETHODIMP GetCurFile(LPOLESTR* ppszFileName, AM_MEDIA_TYPE* pmt);
+    STDMETHODIMP SetRequestHeader(LPCWSTR header);
+    STDMETHODIMP SetInitialStartTime(REFERENCE_TIME rt);
 };

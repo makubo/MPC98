@@ -1,5 +1,4 @@
 #include "stdafx.h"
-#include <afxinet.h>
 #include "HlsReader.h"
 
 #define HLS_INITIAL_BUFFER (512*1024)
@@ -17,7 +16,9 @@ CHlsReader::~CHlsReader()
 STDMETHODIMP CHlsReader::NonDelegatingQueryInterface(REFIID riid, void** ppv)
 {
     CheckPointer(ppv, E_POINTER);
-    return QI(IFileSourceFilter) __super::NonDelegatingQueryInterface(riid, ppv);
+    return QI(IFileSourceFilter)
+        QI(IHlsSourceConfig)
+        __super::NonDelegatingQueryInterface(riid, ppv);
 }
 
 STDMETHODIMP CHlsReader::Load(LPCOLESTR pszFileName, const AM_MEDIA_TYPE* pmt)
@@ -37,6 +38,18 @@ STDMETHODIMP CHlsReader::GetCurFile(LPOLESTR* ppszFileName, AM_MEDIA_TYPE* pmt)
     if(!ppszFileName) return E_POINTER;
     if(!(*ppszFileName = (LPOLESTR)CoTaskMemAlloc((m_fn.GetLength()+1)*sizeof(WCHAR)))) return E_OUTOFMEMORY;
     wcscpy(*ppszFileName, m_fn);
+    return S_OK;
+}
+
+STDMETHODIMP CHlsReader::SetRequestHeader(LPCWSTR header)
+{
+    m_stream.SetRequestHeader(header ? CString(header) : CString());
+    return S_OK;
+}
+
+STDMETHODIMP CHlsReader::SetInitialStartTime(REFERENCE_TIME rt)
+{
+    m_stream.SetInitialStartTime(rt);
     return S_OK;
 }
 
@@ -66,7 +79,6 @@ void CHlsStream::Clear()
     if(!m_tempFile.IsEmpty()) DeleteFile(m_tempFile);
     m_tempFile.Empty();
     m_pos = m_len = 0;
-    m_startTicks = 0;
     m_finished = m_failed = false;
 }
 
@@ -170,7 +182,7 @@ bool CHlsStream::ParsePlaylist(const CString& playlistUrl, const CStringA& text,
         if(masterNext)
         {
             variantUrl = ResolveUrl(playlistUrl, line);
-            return true; // fixed first variant for the initial implementation
+            return true;
         }
         segments.AddTail(ResolveUrl(playlistUrl, line));
     }
@@ -184,33 +196,6 @@ bool CHlsStream::Load(const WCHAR* url)
     if(m_playlistUrl.Left(6).CompareNoCase(L"hls://") == 0)
         m_playlistUrl = L"http://" + m_playlistUrl.Mid(6);
 
-    CString playlist(m_playlistUrl);
-    CString token, device;
-    int i = playlist.Find(_T("MPCAuthToken="));
-    if(i >= 0)
-    {
-        i += 13;
-        int end = playlist.Find(_T('&'), i);
-        token = playlist.Mid(i, end < 0 ? playlist.GetLength()-i : end-i);
-    }
-    i = playlist.Find(_T("MPCDeviceId="));
-    if(i >= 0)
-    {
-        i += 12;
-        int end = playlist.Find(_T('&'), i);
-        device = playlist.Mid(i, end < 0 ? playlist.GetLength()-i : end-i);
-    }
-    i = playlist.Find(_T("MPCStartTimeTicks="));
-    if(i >= 0)
-    {
-        i += 18;
-        int end = playlist.Find(_T('&'), i);
-        m_startTicks = _tcstoi64(playlist.Mid(i, end < 0 ? playlist.GetLength()-i : end-i), NULL, 10);
-    }
-    if(!token.IsEmpty() && !device.IsEmpty())
-    {
-        m_authHeader.Format(_T("Authorization: MediaBrowser Client=\"MPC98\", Device=\"Windows\", DeviceId=\"%s\", Version=\"6.4.9.1\", Token=\"%s\"\r\n"), device, token);
-    }
     TCHAR path[MAX_PATH], file[MAX_PATH];
     if(!GetTempPath(MAX_PATH, path) || !GetTempFileName(path, _T("MPC"), 0, file)) return false;
     m_tempFile = file;
@@ -225,9 +210,6 @@ bool CHlsStream::Load(const WCHAR* url)
     while((DWORD)(GetTickCount() - start) < 30000 && m_len < HLS_INITIAL_BUFFER && !m_finished && !m_failed)
         Sleep(100);
 
-    // CMpegSplitterFile probes several PAT/PMT/PES regions while creating
-    // outputs. Do not expose a single short HLS segment as a source; wait
-    // for a stable startup cache unless a complete small VOD has ended.
     return (m_len >= HLS_INITIAL_BUFFER || m_finished && m_len > 0) && !m_failed;
 }
 
@@ -259,9 +241,6 @@ LONGLONG CHlsStream::Size(LONGLONG* pSizeAvailable)
 {
     CAutoLock lock(&m_csLock);
     if(pSizeAvailable) *pSizeAvailable = m_len;
-    // While downloading, advertise a live/growing stream. Once a VOD
-    // playlist is complete, expose the known final length so splitters can
-    // finish their initial random-access probe for short one-segment media.
     return m_finished ? m_len : 0;
 }
 
@@ -303,9 +282,6 @@ DWORD CHlsStream::ThreadProc()
             }
             if(m_startTicks > 0 && !segments.IsEmpty())
             {
-                // Jellyfin's HLS segment endpoint rejects StartTimeTicks.
-                // Select the first segment whose media runtime reaches the
-                // requested position instead of forwarding that parameter.
                 POSITION first = segments.GetHeadPosition();
                 POSITION pos = segments.GetHeadPosition();
                 while(pos)
