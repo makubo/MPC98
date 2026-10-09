@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="windows-1250"?>
+<VisualStudioProject ProjectType="Visual C++" Version="9,00" Name="hlssource" ProjectGUID="{D947EDB3-95CA-4EC3-94E2-4B19F0E5F56B}" RootNamespace="hlssource" Keyword="Win32Proj" TargetFrameworkVersion="131072">
+	<Platforms><Platform Name="Win32"/></Platforms>
+	<Configurations>
+		<Configuration Name="Debug lib|Win32" ConfigurationType="4" InheritedPropertySheets="..\..\..\common.vsprops;..\..\..\debug.vsprops" UseOfMFC="1" CharacterSet="2"><Tool Name="VCCLCompilerTool" PreprocessorDefinitions="WIN32;_DEBUG"/><Tool Name="VCLibrarianTool" OutputFile="..\..\..\..\lib\$(ProjectName)D.lib"/></Configuration>
+		<Configuration Name="Release lib|Win32" ConfigurationType="4" InheritedPropertySheets="..\..\..\common.vsprops;..\..\..\release.vsprops" UseOfMFC="1" CharacterSet="2"><Tool Name="VCCLCompilerTool" PreprocessorDefinitions="WIN32;NDEBUG"/><Tool Name="VCLibrarianTool" OutputFile="..\..\..\..\lib\$(ProjectName)R.lib"/></Configuration>
+		<Configuration Name="Debug Unicode lib|Win32" ConfigurationType="4" InheritedPropertySheets="..\..\..\common.vsprops;..\..\..\debug.vsprops" UseOfMFC="1" CharacterSet="1"><Tool Name="VCCLCompilerTool" PreprocessorDefinitions="WIN32;_DEBUG"/><Tool Name="VCLibrarianTool" OutputFile="..\..\..\..\lib\$(ProjectName)DU.lib"/></Configuration>
+		<Configuration Name="Release Unicode lib|Win32" ConfigurationType="4" InheritedPropertySheets="..\..\..\common.vsprops;..\..\..\release.vsprops" UseOfMFC="1" CharacterSet="1"><Tool Name="VCCLCompilerTool" PreprocessorDefinitions="WIN32;NDEBUG"/><Tool Name="VCLibrarianTool" OutputFile="..\..\..\..\lib\$(ProjectName)RU.lib"/></Configuration>
+	</Configurations>
+	<Files>
+		<Filter Name="Source Files" Filter="cpp;c;cxx;def;odl;idl;hpj;bat;asm"><File RelativePath="HlsReader.cpp"/><File RelativePath="stdafx.cpp"/></Filter>
+		<Filter Name="Header Files" Filter="h;hpp;hxx;hm;inl;inc"><File RelativePath="HlsReader.h"/><File RelativePath="stdafx.h"/></Filter>
+	</Files>
+</VisualStudioProject>
