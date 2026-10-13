@@ -637,8 +637,9 @@ void CMainFrame::LoadControlBar(CControlBar* pBar, UINT defDockBarID)
 	CString section = _T("ToolBars\\") + str;
 
 	CWinApp* pApp = AfxGetApp();
+	bool fJellyfinLibrary = pBar == &m_wndJellyfinBar;
 
-	UINT nID = pApp->GetProfileInt(section, _T("DockState"), defDockBarID);
+	UINT nID = fJellyfinLibrary ? defDockBarID : pApp->GetProfileInt(section, _T("DockState"), defDockBarID);
 
 	if(nID != AFX_IDW_DOCKBAR_FLOAT)
 	{
@@ -646,7 +647,7 @@ void CMainFrame::LoadControlBar(CControlBar* pBar, UINT defDockBarID)
 	}
 
 	pBar->ShowWindow(
-		pApp->GetProfileInt(section, _T("Visible"), FALSE) 
+		!fJellyfinLibrary && pApp->GetProfileInt(section, _T("Visible"), FALSE)
 		&& pBar != &m_wndSubresyncBar 
 		&& pBar != &m_wndCaptureBar
 		&& pBar != &m_wndShaderEditorBar
@@ -655,7 +656,7 @@ void CMainFrame::LoadControlBar(CControlBar* pBar, UINT defDockBarID)
 
 	if(CSizingControlBar* pSCB = dynamic_cast<CSizingControlBar*>(pBar))
 	{
-		pSCB->LoadState(section + _T("\\State"));
+		if(!fJellyfinLibrary) pSCB->LoadState(section + _T("\\State"));
 		m_dockingbars.AddTail(pSCB);
 	}
 }
@@ -671,6 +672,7 @@ void CMainFrame::RestoreFloatingControlBars()
 	while(pos)
 	{
 		CSizingControlBar* pBar = m_dockingbars.GetNext(pos);
+		if(pBar == &m_wndJellyfinBar) continue;
 
 		CString str;
 		pBar->GetWindowText(str);
@@ -699,6 +701,7 @@ void CMainFrame::SaveControlBars()
 	while(pos)
 	{
 		CSizingControlBar* pBar = m_dockingbars.GetNext(pos);
+		if(pBar == &m_wndJellyfinBar) continue;
 
 		CString str;
 		pBar->GetWindowText(str);

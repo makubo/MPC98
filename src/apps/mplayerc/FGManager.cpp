@@ -50,6 +50,30 @@ static CString GetUrlQueryValue(LPCWSTR url, LPCTSTR name)
     return value.Mid(pos, end < 0 ? value.GetLength() - pos : end - pos);
 }
 
+static CStringW StripHlsPrivateQueryValues(LPCWSTR url)
+{
+	CString value(url);
+	int queryPos = value.Find(_T('?'));
+	if(queryPos < 0) return CStringW(value);
+
+	CString result = value.Left(queryPos);
+	CString query = value.Mid(queryPos + 1);
+	CString cleanQuery;
+	int pos = 0;
+	for(CString part = query.Tokenize(_T("&"), pos); !part.IsEmpty(); part = query.Tokenize(_T("&"), pos))
+	{
+		CString name = part.Left(max(0, part.Find(_T('='))));
+		if(!name.CompareNoCase(_T("MPCAuthToken"))
+		|| !name.CompareNoCase(_T("MPCDeviceId"))
+		|| !name.CompareNoCase(_T("MPCStartTimeTicks")))
+			continue;
+		if(!cleanQuery.IsEmpty()) cleanQuery += _T('&');
+		cleanQuery += part;
+	}
+	if(!cleanQuery.IsEmpty()) result += _T('?') + cleanQuery;
+	return CStringW(result);
+}
+
 // CFGManager
 //
 
@@ -411,6 +435,7 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 
 	CComQIPtr<IFileSourceFilter> pFSF = pBF;
 	if(!pFSF) return E_NOINTERFACE;
+	CStringW sourceFileName(lpcwstrFileName);
 
 	if(CComQIPtr<IHlsSourceConfig> pHlsConfig = pBF)
 	{
@@ -423,6 +448,7 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 		CStringW wideHeader(header);
 		pHlsConfig->SetRequestHeader(wideHeader);
 		pHlsConfig->SetInitialStartTime(start.IsEmpty() ? 0 : _tcstoi64(start, NULL, 10));
+		sourceFileName = StripHlsPrivateQueryValues(lpcwstrFileName);
 	}
 
 	if(FAILED(hr = AddFilter(pBF, lpcwstrFilterName)))
@@ -439,7 +465,7 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 		pmt = &mt;
 	}
 
-	if(FAILED(hr = pFSF->Load(lpcwstrFileName, pmt)))
+	if(FAILED(hr = pFSF->Load(sourceFileName, pmt)))
 	{
 		RemoveFilter(pBF);
 		return hr;

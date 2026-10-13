@@ -22,15 +22,17 @@ BOOL CPlayerJellyfinBar::Create(CWnd* pParentWnd)
 
 	m_dlg.Create(this);
 	m_dlg.ShowWindow(SW_SHOWNORMAL);
-	CRect client;
-	GetClientRect(client);
-	m_dlg.MoveWindow(client);
 
 	CRect r;
 	m_dlg.GetWindowRect(r);
-	m_szMinVert = m_szVert = r.Size();
-	m_szMinHorz = m_szHorz = r.Size();
-	m_szMinFloat = m_szFloat = r.Size();
+	// Docked bars use these defaults, while a detached library keeps the
+	// natural dialog size below.
+	m_szVert = CSize(150, 90);
+	m_szHorz = CSize(150, 90);
+	m_szFloat = r.Size();
+	// Five standard tree rows plus the dialog margins, with a compact dock width.
+	m_szMinVert = m_szMinHorz = m_szMinFloat = CSize(150, 90);
+	m_bFixedFloat = false;
 
 	return TRUE;
 }
@@ -49,10 +51,10 @@ BOOL CPlayerJellyfinBar::PreTranslateMessage(MSG* pMsg)
 void CPlayerJellyfinBar::OnSize(UINT nType, int cx, int cy)
 {
 	__super::OnSize(nType, cx, cy);
-	if(IsWindow(m_dlg))
+	if(::IsWindow(m_dlg.m_hWnd) && cx > 0 && cy > 0)
 	{
 		CRect r;
-		GetClientRect(&r);
+		GetClientRect(r);
 		m_dlg.MoveWindow(r);
 	}
 }
