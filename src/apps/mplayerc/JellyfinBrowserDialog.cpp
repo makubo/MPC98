@@ -76,6 +76,22 @@ void CJellyfinBrowserDialog::ReloadServers()
 	PopulateRoot();
 }
 
+CJellyfinClient* CJellyfinBrowserDialog::FindClient(const CString& serverUrl, const CString& deviceId) const
+{
+	CString url = serverUrl;
+	url.TrimRight(_T("/"));
+
+	for(size_t i = 0; i < m_clients.GetCount(); i++)
+	{
+		CJellyfinClient* client = m_clients[i];
+		if(client && !client->GetServerUrl().CompareNoCase(url)
+		&& !client->GetDeviceId().CompareNoCase(deviceId))
+			return client;
+	}
+
+	return NULL;
+}
+
 void CJellyfinBrowserDialog::PopulateRoot()
 {
 	ClearTree();

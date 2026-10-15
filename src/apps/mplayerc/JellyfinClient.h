@@ -62,6 +62,7 @@ public:
 
 	// Children of a folder/series/season, from /Users/{id}/Items?ParentId=...
 	bool GetItems(CString parentId, CAtlArray<CJellyfinItem>& items, CString& error);
+	bool GetItem(CString itemId, CJellyfinItem& item, CString& error);
 	bool GetAudioStreams(const CJellyfinItem& item, CAtlArray<CJellyfinAudioStream>& streams, CString& error);
 	bool GetPlaybackInfo(const CJellyfinItem& item, CJellyfinPlaybackInfo& info, CString& error);
 	bool GetDirectPlayStreamUrl(const CJellyfinItem& item, const CJellyfinPlaybackInfo& info,
@@ -96,6 +97,7 @@ public:
 		__int64 positionTicks);
 
 	CString GetDeviceId() const { return m_deviceId; }
+	CString GetServerUrl() const { return m_serverUrl; }
 	CString GetUserId() const { return m_userId; }
 	CString GetAccessToken() const { return m_accessToken; }
 	void SetAccessToken(CString userId, CString accessToken) { m_userId = userId; m_accessToken = accessToken; }

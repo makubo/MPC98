@@ -77,12 +77,14 @@ public:
 	void SetNext(), SetPrev(), SetFirst(), SetLast();
 	void SetCurValid(bool fValid);
 	void SetCurTime(REFERENCE_TIME rt);
+	bool SetCurJellyfinStreamUrl(const CString& url, int audioStreamIndex, bool fPersist);
 
 	void Refresh();
 	void Empty();
 
 	void Open(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs = NULL);
 	void Append(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs = NULL);
+	void OpenJellyfin(const CPlaylistItem& pli);
 
 	void Open(CStringW vdn, CStringW adn, int vinput, int vchannel, int ainput);
 	void Append(CStringW vdn, CStringW adn, int vinput, int vchannel, int ainput);

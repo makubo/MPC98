@@ -27,6 +27,7 @@ public:
 
 	BOOL Create(CWnd* pParentWnd);
 	void ReloadServers();
+	CJellyfinClient* FindClient(const CString& serverUrl, const CString& deviceId) const;
 
 	CAtlArray<CJellyfinClient*> m_clients;
 

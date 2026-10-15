@@ -270,6 +270,42 @@ bool CJellyfinClient::GetItems(CString parentId, CAtlArray<CJellyfinItem>& items
 	return ParseItemList(root, items);
 }
 
+bool CJellyfinClient::GetItem(CString itemId, CJellyfinItem& item, CString& error)
+{
+	item = CJellyfinItem();
+	CString path;
+	path.Format(_T("/Users/%s/Items/%s?Fields=MediaSources,RunTimeTicks,ChildCount"),
+		m_userId, UrlEncode(itemId));
+
+	CStringA response;
+	if(!DoRequest(_T("GET"), path, "", response, error))
+		return false;
+
+	CJsonValue root;
+	if(!ParseJson(response, root) || !root.IsObject())
+	{
+		error = _T("Failed to parse Jellyfin item");
+		return false;
+	}
+
+	item.id = root["Id"].AsString();
+	item.name = root["Name"].AsString();
+	item.type = root["Type"].AsString();
+	item.isFolder = root["IsFolder"].AsBool(false);
+	item.runtimeTicks = root["RunTimeTicks"].AsInt64();
+	item.childCount = (int)root["ChildCount"].AsNumber(0);
+	if(root.HasMember("MediaSources") && root["MediaSources"].IsArray() && root["MediaSources"].arrayValue.GetCount() > 0)
+		item.mediaSourceId = root["MediaSources"].arrayValue[0]["Id"].AsStringA();
+
+	if(item.id.IsEmpty())
+	{
+		error = _T("Jellyfin item response has no ID");
+		return false;
+	}
+
+	return true;
+}
+
 bool CJellyfinClient::GetPlaybackInfo(const CJellyfinItem& item, CJellyfinPlaybackInfo& info, CString& error)
 {
 	info = CJellyfinPlaybackInfo();
