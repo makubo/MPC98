@@ -6,6 +6,15 @@
 #include "resource.h"
 #include "JellyfinClient.h"
 
+#define WM_JELLYFIN_TREE_MCLICK (WM_APP + 0x140)
+
+class CJellyfinTreeCtrl : public CTreeCtrl
+{
+protected:
+	afx_msg void OnMButtonDown(UINT nFlags, CPoint point);
+	DECLARE_MESSAGE_MAP()
+};
+
 // Per-tree-item bookkeeping. Stored via CTreeCtrl::SetItemData as a
 // pointer to a heap-allocated instance owned by the dialog (freed in
 // OnDestroy / whenever the tree is cleared).
@@ -32,12 +41,14 @@ public:
 	CAtlArray<CJellyfinClient*> m_clients;
 
 protected:
-	CTreeCtrl m_tree;
+	CJellyfinTreeCtrl m_tree;
 
 	virtual void DoDataExchange(CDataExchange* pDX);
 	virtual BOOL OnInitDialog();
 
 	afx_msg void OnDblClk(NMHDR* pNMHDR, LRESULT* pResult);
+	afx_msg LRESULT OnTreeMiddleClick(WPARAM wParam, LPARAM lParam);
+	afx_msg void OnRightClick(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnItemExpanding(NMHDR* pNMHDR, LRESULT* pResult);
 	afx_msg void OnSize(UINT nType, int cx, int cy);
 	afx_msg void OnDestroy();
@@ -49,5 +60,9 @@ private:
 	void PopulateRoot();
 	void PopulateChildren(HTREEITEM hParent);
 	void PlaySelectedItem();
+	bool MakePlaylistItem(CJellyfinClient* client, const CJellyfinItem& item, CPlaylistItem& pli, CString& error);
+	void CollectPlaylistItems(CJellyfinClient* client, const CJellyfinItem& item, CAtlArray<CPlaylistItem>& items, CString& errors);
+	void AppendSelectedItem(bool fNext);
+	void PlayOrAppendFolder(bool fPlay);
 	void FreeItemData(HTREEITEM hItem, bool recurse);
 };

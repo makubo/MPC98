@@ -85,6 +85,9 @@ public:
 	void Open(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs = NULL);
 	void Append(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs = NULL);
 	void OpenJellyfin(const CPlaylistItem& pli);
+	void OpenJellyfin(const CAtlArray<CPlaylistItem>& items);
+	void AppendJellyfin(const CAtlArray<CPlaylistItem>& items);
+	void InsertJellyfinNext(const CPlaylistItem& pli);
 
 	void Open(CStringW vdn, CStringW adn, int vinput, int vchannel, int ainput);
 	void Append(CStringW vdn, CStringW adn, int vinput, int vchannel, int ainput);

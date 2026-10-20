@@ -684,6 +684,32 @@ void CPlayerPlaylistBar::OpenJellyfin(const CPlaylistItem& pli)
 	SavePlaylist();
 }
 
+void CPlayerPlaylistBar::OpenJellyfin(const CAtlArray<CPlaylistItem>& items)
+{
+	Empty();
+	for(size_t i = 0; i < items.GetCount(); i++)
+		m_pl.AddTail(items[i]);
+	Refresh();
+	SavePlaylist();
+}
+
+void CPlayerPlaylistBar::AppendJellyfin(const CAtlArray<CPlaylistItem>& items)
+{
+	for(size_t i = 0; i < items.GetCount(); i++)
+		m_pl.AddTail(items[i]);
+	Refresh();
+	SavePlaylist();
+}
+
+void CPlayerPlaylistBar::InsertJellyfinNext(const CPlaylistItem& pli)
+{
+	POSITION pos = m_pl.GetPos();
+	if(pos) m_pl.InsertAfter(pos, pli);
+	else m_pl.AddTail(pli);
+	Refresh();
+	SavePlaylist();
+}
+
 void CPlayerPlaylistBar::Append(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs)
 {
 	TRACE(_T("Playlist append: %d entries, multi=%d\n"), fns.GetCount(), fMulti);

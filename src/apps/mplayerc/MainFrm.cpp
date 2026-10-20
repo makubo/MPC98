@@ -4625,6 +4625,25 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 	if(p) OpenMedia(p);
 }
 
+void CMainFrame::AppendJellyfinItems(const CAtlArray<CPlaylistItem>& items)
+{
+	if(items.GetCount()) m_wndPlaylistBar.AppendJellyfin(items);
+}
+
+void CMainFrame::InsertJellyfinItemNext(const CPlaylistItem& item)
+{
+	m_wndPlaylistBar.InsertJellyfinNext(item);
+}
+
+void CMainFrame::PlayJellyfinItems(const CAtlArray<CPlaylistItem>& items)
+{
+	if(items.GetCount() == 0) return;
+	SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+	m_wndPlaylistBar.OpenJellyfin(items);
+	m_wndPlaylistBar.SetFirst();
+	OpenCurPlaylistItem();
+}
+
 
 void CMainFrame::OnViewShaderEditor()
 {

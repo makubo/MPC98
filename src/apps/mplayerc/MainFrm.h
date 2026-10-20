@@ -189,6 +189,9 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 public:
 	void OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item,
 		REFERENCE_TIME rtStart = 0, int audioStreamIndex = -1, bool fAddToPlaylist = true);
+	void AppendJellyfinItems(const CAtlArray<CPlaylistItem>& items);
+	void InsertJellyfinItemNext(const CPlaylistItem& item);
+	void PlayJellyfinItems(const CAtlArray<CPlaylistItem>& items);
 
 private:
 
