@@ -167,11 +167,9 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 	CComQIPtr<IBufferInfo> pBI;
 	CComQIPtr<IAMOpenProgress> pAMOP;
 
-	// Jellyfin playback session tracking (see JellyfinBrowserDialog /
-	// CMainFrame::OpenJellyfinItem). m_pJellyfinActiveClient is a
-	// non-owning pointer into m_wndJellyfinBar.m_dlg.m_client, valid for
-	// as long as the docking bar exists (the lifetime of the frame).
-	CJellyfinClient* m_pJellyfinActiveClient;
+	// Jellyfin playback session tracking. The active session owns its client
+	// because the browser may reload and discard its own client list.
+	CAutoPtr<CJellyfinClient> m_pJellyfinActiveClient;
 	CString m_jellyfinItemId;
 	CString m_jellyfinPlaySessionId;
 	CStringA m_jellyfinMediaSourceId;
@@ -181,15 +179,23 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 	DWORD m_jellyfinClockLastTick;
 	bool m_jellyfinProgressive;
 	bool m_jellyfinSessionActive;
+	bool m_fJellyfinCompletionHandled;
 	CAtlArray<CJellyfinAudioStream> m_jellyfinAudioStreams;
 	int m_jellyfinAudioStreamIndex;
 
+	void StopJellyfinSession();
 	void UpdateJellyfinClock();
 	REFERENCE_TIME GetJellyfinPosition() const;
+	void SchedulePlaylistRecovery();
+	void FailJellyfinOpen(const CString& error, bool fAddToPlaylist);
+	bool HandlePlaybackComplete();
 
 public:
 	void OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item,
-		REFERENCE_TIME rtStart = 0, int audioStreamIndex = -1);
+		REFERENCE_TIME rtStart = 0, int audioStreamIndex = -1, bool fAddToPlaylist = true);
+	void AppendJellyfinItems(const CAtlArray<CPlaylistItem>& items);
+	void InsertJellyfinItemNext(const CPlaylistItem& item);
+	void PlayJellyfinItems(const CAtlArray<CPlaylistItem>& items);
 
 private:
 
@@ -387,6 +393,7 @@ protected:
 
 public:
 	void OpenCurPlaylistItem(REFERENCE_TIME rtStart = 0);
+	afx_msg LRESULT OnRecoverPlaylistItem(WPARAM wParam, LPARAM lParam);
 	void OpenMedia(CAutoPtr<OpenMediaData> pOMD);
 	void CloseMedia();
 

@@ -39,6 +39,13 @@ public:
 	long m_country;
 
 	bool m_fInvalid;
+	bool m_fJellyfin;
+	CString m_jellyfinServerUrl;
+	CString m_jellyfinDeviceId;
+	CString m_jellyfinItemId;
+	CString m_jellyfinMediaSourceId;
+	REFERENCE_TIME m_jellyfinRuntimeTicks;
+	int m_jellyfinAudioStreamIndex;
 
 public:
 	CPlaylistItem();
