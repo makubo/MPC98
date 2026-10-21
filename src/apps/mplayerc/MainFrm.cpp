@@ -104,6 +104,8 @@ public:
 
 //
 
+#define WM_PLAYLIST_RECOVER (WM_APP + 0x141)
+
 #define SaveMediaState \
 	OAFilterState __fs = GetMediaState(); \
  \
@@ -126,7 +128,6 @@ public:
 		else if(__fs == State_Running) \
 			SendMessage(WM_COMMAND, ID_PLAY_PLAY); \
 	} \
-
 /*
 #ifdef _DEBUG
 #define new DEBUG_NEW
@@ -162,6 +163,7 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
 	ON_WM_TIMER()
 
 	ON_MESSAGE(WM_GRAPHNOTIFY, OnGraphNotify)
+	ON_MESSAGE(WM_PLAYLIST_RECOVER, OnRecoverPlaylistItem)
 	ON_MESSAGE(WM_REARRANGERENDERLESS, OnRepaintRenderLess)
 	ON_MESSAGE(WM_RESUMEFROMSTATE, OnResumeFromState)
 
@@ -400,6 +402,7 @@ CMainFrame::CMainFrame() :
 	m_jellyfinClockLastTick(0),
 	m_jellyfinProgressive(false),
 	m_jellyfinSessionActive(false),
+	m_fJellyfinCompletionHandled(false),
 	m_jellyfinAudioStreamIndex(-1)
 {
 }
@@ -1296,8 +1299,28 @@ void CMainFrame::StopJellyfinSession()
 	m_jellyfinElapsedTicks = 0;
 	m_jellyfinClockLastTick = 0;
 	m_jellyfinProgressive = false;
+	m_fJellyfinCompletionHandled = false;
 	m_jellyfinAudioStreams.RemoveAll();
 	m_jellyfinAudioStreamIndex = -1;
+}
+
+void CMainFrame::SchedulePlaylistRecovery()
+{
+	PostMessage(WM_PLAYLIST_RECOVER);
+}
+
+void CMainFrame::FailJellyfinOpen(const CString& error, bool fAddToPlaylist)
+{
+	if(fAddToPlaylist)
+	{
+		AfxMessageBox(error);
+		return;
+	}
+
+	m_wndPlaylistBar.SetCurValid(false);
+	SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+	SendStatusMessage(error, 5000);
+	SchedulePlaylistRecovery();
 }
 
 void CMainFrame::OnTimer(UINT nIDEvent)
@@ -1344,6 +1367,10 @@ void CMainFrame::OnTimer(UINT nIDEvent)
 			m_wndSeekBar.Enable(rtDur > 0);
 			m_wndSeekBar.SetRange(0, rtDur);
 			m_wndSeekBar.SetPos(rtNow);
+
+			if(m_jellyfinSessionActive && m_jellyfinProgressive && rtDur > 0
+			&& rtNow >= rtDur && GetMediaState() == State_Running && !m_fJellyfinCompletionHandled)
+				HandlePlaybackComplete();
 		}
 		else if(m_iPlaybackMode == PM_CAPTURE)
 		{
@@ -1777,6 +1804,91 @@ bool CMainFrame::DoAfterPlaybackEvent()
 	return true;
 }
 
+bool CMainFrame::HandlePlaybackComplete()
+{
+	if(m_jellyfinSessionActive)
+	{
+		if(m_fJellyfinCompletionHandled) return false;
+		m_fJellyfinCompletionHandled = true;
+	}
+
+	AppSettings& s = AfxGetAppSettings();
+
+	if(m_wndPlaylistBar.GetCount() <= 1)
+	{
+		m_nLoops++;
+
+		if(DoAfterPlaybackEvent()) return true;
+
+		if(s.fLoopForever || m_nLoops < s.nLoops)
+		{
+			if(m_jellyfinSessionActive && m_jellyfinProgressive && m_pJellyfinActiveClient)
+			{
+				CJellyfinItem item;
+				item.id = m_jellyfinItemId;
+				item.mediaSourceId = m_jellyfinMediaSourceId;
+				item.runtimeTicks = m_jellyfinDurationTicks;
+				OpenJellyfinItem((CJellyfinClient*)m_pJellyfinActiveClient, item, 0, m_jellyfinAudioStreamIndex, false);
+			}
+			else if(GetMediaState() == State_Stopped)
+			{
+				SendMessage(WM_COMMAND, ID_PLAY_PLAY);
+			}
+			else
+			{
+				LONGLONG pos = 0;
+				pMS->SetPositions(&pos, AM_SEEKING_AbsolutePositioning, NULL, AM_SEEKING_NoPositioning);
+
+				if(GetMediaState() == State_Paused)
+					SendMessage(WM_COMMAND, ID_PLAY_PLAY);
+			}
+		}
+		else
+		{
+			if(s.fRewind) SendMessage(WM_COMMAND, ID_PLAY_STOP);
+			else m_fEndOfStream = true;
+			SendMessage(WM_COMMAND, ID_PLAY_PAUSE);
+
+			if(m_fFullScreen && s.fExitFullScreenAtTheEnd)
+				OnViewFullscreen();
+		}
+	}
+	else
+	{
+		if(m_wndPlaylistBar.IsAtEnd())
+		{
+			if(DoAfterPlaybackEvent()) return true;
+
+			m_nLoops++;
+		}
+
+		if(s.fLoopForever || m_nLoops < s.nLoops)
+		{
+			int nLoops = m_nLoops;
+			PostMessage(WM_COMMAND, ID_NAVIGATE_SKIPFORWARD);
+			m_nLoops = nLoops;
+		}
+		else
+		{
+			if(m_fFullScreen && s.fExitFullScreenAtTheEnd)
+				OnViewFullscreen();
+
+			if(s.fRewind)
+			{
+				AfxGetAppSettings().nCLSwitches |= CLSW_OPEN; // HACK
+				PostMessage(WM_COMMAND, ID_NAVIGATE_SKIPFORWARD);
+			}
+			else
+			{
+				m_fEndOfStream = true;
+				PostMessage(WM_COMMAND, ID_PLAY_PAUSE);
+			}
+		}
+	}
+
+	return false;
+}
+
 //
 // our WM_GRAPHNOTIFY handler
 //
@@ -1802,79 +1914,18 @@ LRESULT CMainFrame::OnGraphNotify(WPARAM wParam, LPARAM lParam)
 
         if(EC_COMPLETE == evCode)
         {
-			AppSettings& s = AfxGetAppSettings();
-
-			if(m_wndPlaylistBar.GetCount() <= 1)
-			{
-				m_nLoops++;
-
-				if(DoAfterPlaybackEvent()) return hr;
-
-				if(s.fLoopForever || m_nLoops < s.nLoops)
-				{
-					if(GetMediaState() == State_Stopped)
-					{
-						SendMessage(WM_COMMAND, ID_PLAY_PLAY);
-					}
-					else
-					{
-						LONGLONG pos = 0;
-						pMS->SetPositions(&pos, AM_SEEKING_AbsolutePositioning, NULL, AM_SEEKING_NoPositioning);
-
-						if(GetMediaState() == State_Paused)
-						{
-							SendMessage(WM_COMMAND, ID_PLAY_PLAY);
-						}
-					}
-				}
-				else 
-				{
-					if(s.fRewind) SendMessage(WM_COMMAND, ID_PLAY_STOP);
-					else m_fEndOfStream = true;
-					SendMessage(WM_COMMAND, ID_PLAY_PAUSE);
-	
-					if(m_fFullScreen && s.fExitFullScreenAtTheEnd) 
-						OnViewFullscreen();
-				}
-			}
-			else if(m_wndPlaylistBar.GetCount() > 1)
-			{
-				if(m_wndPlaylistBar.IsAtEnd())
-				{
-					if(DoAfterPlaybackEvent()) return hr;
-
-					m_nLoops++;
-				}
-
-				if(s.fLoopForever || m_nLoops < s.nLoops)
-				{
-					int nLoops = m_nLoops;
-					PostMessage(WM_COMMAND, ID_NAVIGATE_SKIPFORWARD);
-					m_nLoops = nLoops;
-				}
-				else 
-				{
-					if(m_fFullScreen && s.fExitFullScreenAtTheEnd) 
-						OnViewFullscreen();
-
-					if(s.fRewind)
-					{
-						AfxGetAppSettings().nCLSwitches |= CLSW_OPEN; // HACK
-						PostMessage(WM_COMMAND, ID_NAVIGATE_SKIPFORWARD);
-					}
-					else
-					{
-						m_fEndOfStream = true;
-						PostMessage(WM_COMMAND, ID_PLAY_PAUSE);
-					}
-				}
-			}
+			if(HandlePlaybackComplete()) return hr;
         }
 		else if(EC_ERRORABORT == evCode)
 		{
 			TRACE(_T("EC_ERRORABORT, hr = %08x\n"), (HRESULT)evParam1);
-//			SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-//			m_closingmsg = _com_error((HRESULT)evParam1).ErrorMessage();
+			if(m_iMediaLoadState == MLS_LOADED && m_iPlaybackMode == PM_FILE)
+			{
+				m_closingmsg = _com_error((HRESULT)evParam1).ErrorMessage();
+				SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
+				m_wndPlaylistBar.SetCurValid(false);
+				SchedulePlaylistRecovery();
+			}
 		}
 		else if(EC_REPAINT == evCode)
 		{
@@ -2043,6 +2094,7 @@ LRESULT CMainFrame::OnGraphNotify(WPARAM wParam, LPARAM lParam)
 			SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
 			m_closingmsg = !str.IsEmpty() ? str : _T("Unspecified graph error");
 			m_wndPlaylistBar.SetCurValid(false);
+			SchedulePlaylistRecovery();
 			break;
 		}
 	}
@@ -4538,7 +4590,7 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 		fHls = pClient->GetHlsStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart, audioStreamIndex);
 		if(!fHls)
 		{
-			AfxMessageBox(_T("Failed to resolve Jellyfin HLS stream: ") + error);
+			FailJellyfinOpen(_T("Failed to resolve Jellyfin HLS stream: ") + error, fAddToPlaylist);
 			return;
 		}
 	}
@@ -4550,14 +4602,14 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 
 		if(!fDirectPlay && s.JellyfinStreamingMode == CMPlayerCApp::JFSM_DIRECTPLAY_ONLY)
 		{
-			AfxMessageBox(_T("Direct play is unavailable: ") + error);
+			FailJellyfinOpen(_T("Direct play is unavailable: ") + error, fAddToPlaylist);
 			return;
 		}
 	}
 
 	if(!fDirectPlay && !fHls && !pClient->GetTranscodedStreamUrl(item, url, playSessionId, mediaSourceId, error, rtStart, audioStreamIndex))
 	{
-		AfxMessageBox(_T("Failed to resolve Jellyfin stream: ") + error);
+		FailJellyfinOpen(_T("Failed to resolve Jellyfin stream: ") + error, fAddToPlaylist);
 		return;
 	}
 
@@ -4613,6 +4665,7 @@ void CMainFrame::OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem&
 	m_jellyfinAudioStreams.Copy(audioStreams);
 	m_jellyfinAudioStreamIndex = audioStreamIndex;
 	m_jellyfinSessionActive = true;
+	m_fJellyfinCompletionHandled = false;
 	if(item.runtimeTicks > 0)
 		m_rtDurationOverride = item.runtimeTicks;
 
@@ -8279,18 +8332,7 @@ bool CMainFrame::OpenMediaPrivate(CAutoPtr<OpenMediaData> pOMD)
 		if(p && err != aborted)
 		{
 			m_wndPlaylistBar.SetCurValid(false);
-			if(m_wndPlaylistBar.GetCount() > 1)
-			{
-				CPlaylistItem pli[2];
-				m_wndPlaylistBar.GetCur(pli[0]);
-				m_wndPlaylistBar.SetNext();
-				m_wndPlaylistBar.GetCur(pli[1]);
-				if(pli[0].m_id != pli[1].m_id)
-				{
-					CAutoPtr<OpenMediaData> p(m_wndPlaylistBar.GetCurOMD());
-					if(p) OpenMediaPrivate(p);
-				}
-			}
+			SchedulePlaylistRecovery();
 		}
 	}
 	else
@@ -10184,6 +10226,30 @@ void CMainFrame::SendStatusMessage(CString msg, int nTimeOut)
 	SetTimer(TIMER_STATUSERASER, nTimeOut, NULL);
 }
 
+LRESULT CMainFrame::OnRecoverPlaylistItem(WPARAM wParam, LPARAM lParam)
+{
+	int count = m_wndPlaylistBar.GetCount();
+	if(count <= 1)
+	{
+		SendStatusMessage(_T("No playable playlist item remains"), 5000);
+		return 0;
+	}
+
+	for(int i = 0; i < count; i++)
+	{
+		m_wndPlaylistBar.SetNext();
+		CPlaylistItem pli;
+		if(m_wndPlaylistBar.GetCur(pli) && !pli.m_fInvalid)
+		{
+			OpenCurPlaylistItem();
+			return 0;
+		}
+	}
+
+	SendStatusMessage(_T("No playable playlist item remains"), 5000);
+	return 0;
+}
+
 void CMainFrame::OpenCurPlaylistItem(REFERENCE_TIME rtStart)
 {
 	if(m_wndPlaylistBar.GetCount() == 0)
@@ -10199,7 +10265,8 @@ void CMainFrame::OpenCurPlaylistItem(REFERENCE_TIME rtStart)
 		{
 			m_wndPlaylistBar.SetCurValid(false);
 			SendMessage(WM_COMMAND, ID_FILE_CLOSEMEDIA);
-			AfxMessageBox(_T("The Jellyfin server profile for this playlist item is unavailable."));
+			SendStatusMessage(_T("The Jellyfin server profile for this playlist item is unavailable."), 5000);
+			SchedulePlaylistRecovery();
 			return;
 		}
 
@@ -10214,6 +10281,12 @@ void CMainFrame::OpenCurPlaylistItem(REFERENCE_TIME rtStart)
 
 	CAutoPtr<OpenMediaData> p(m_wndPlaylistBar.GetCurOMD(rtStart));
 	if(p) OpenMedia(p);
+	else
+	{
+		m_wndPlaylistBar.SetCurValid(false);
+		SendStatusMessage(_T("The playlist item cannot be opened."), 5000);
+		SchedulePlaylistRecovery();
+	}
 }
 
 void CMainFrame::AddCurDevToPlaylist()

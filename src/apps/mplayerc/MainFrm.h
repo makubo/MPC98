@@ -179,12 +179,16 @@ class CMainFrame : public CFrameWnd, public CDropTarget
 	DWORD m_jellyfinClockLastTick;
 	bool m_jellyfinProgressive;
 	bool m_jellyfinSessionActive;
+	bool m_fJellyfinCompletionHandled;
 	CAtlArray<CJellyfinAudioStream> m_jellyfinAudioStreams;
 	int m_jellyfinAudioStreamIndex;
 
 	void StopJellyfinSession();
 	void UpdateJellyfinClock();
 	REFERENCE_TIME GetJellyfinPosition() const;
+	void SchedulePlaylistRecovery();
+	void FailJellyfinOpen(const CString& error, bool fAddToPlaylist);
+	bool HandlePlaybackComplete();
 
 public:
 	void OpenJellyfinItem(CJellyfinClient* pClient, const CJellyfinItem& item,
@@ -389,6 +393,7 @@ protected:
 
 public:
 	void OpenCurPlaylistItem(REFERENCE_TIME rtStart = 0);
+	afx_msg LRESULT OnRecoverPlaylistItem(WPARAM wParam, LPARAM lParam);
 	void OpenMedia(CAutoPtr<OpenMediaData> pOMD);
 	void CloseMedia();
 
