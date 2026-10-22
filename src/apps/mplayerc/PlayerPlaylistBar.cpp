@@ -26,6 +26,7 @@
 #include <atlutil.h>
 #include "mplayerc.h"
 #include "mainfrm.h"
+#include "JellyfinClient.h"
 #include "..\..\DSUtil\DSUtil.h"
 #include "SaveTextFileDialog.h"
 #include ".\playerplaylistbar.h"
@@ -100,6 +101,146 @@ bool FindFileInList(CAtlList<CString>& sl, CString fn)
 	POSITION pos = sl.GetHeadPosition();
 	while(pos && !fFound) {if(!sl.GetNext(pos).CompareNoCase(fn)) fFound = true;}
 	return(fFound);
+}
+
+static CString GetUrlParameter(const CString& url, const CString& name)
+{
+	int pos = url.Find(_T('?'));
+	if(pos < 0) return CString();
+
+	CString query = url.Mid(pos + 1);
+	int next = 0;
+	for(CString pair = query.Tokenize(_T("&"), next); !pair.IsEmpty(); pair = query.Tokenize(_T("&"), next))
+	{
+		int equals = pair.Find(_T('='));
+		if(equals >= 0 && !pair.Left(equals).CompareNoCase(name))
+			return pair.Mid(equals + 1);
+	}
+
+	return CString();
+}
+
+static CString NormalizeJellyfinPlaylistUrl(CString url)
+{
+	LPCTSTR names[] = {_T("StartTimeTicks"), _T("MPCStartTimeTicks")};
+	for(int i = 0; i < countof(names); i++)
+	{
+		CString lower = url;
+		lower.MakeLower();
+		CString name = names[i];
+		name.MakeLower();
+		int pos = lower.Find(_T("?") + name + _T("="));
+		if(pos < 0) pos = lower.Find(_T("&") + name + _T("="));
+		if(pos < 0) continue;
+
+		int value = pos + name.GetLength() + 2;
+		int end = url.Find(_T('&'), value);
+		if(end < 0) end = url.GetLength();
+		url.Delete(value, end - value);
+		url.Insert(value, _T("0"));
+	}
+	return url;
+}
+
+static void IdentifyJellyfinItem(CPlaylistItem& pli)
+{
+	if(pli.m_fns.IsEmpty()) return;
+	if(pli.m_fJellyfin && !pli.m_jellyfinServerUrl.IsEmpty() && !pli.m_jellyfinDeviceId.IsEmpty()
+	&& !pli.m_jellyfinItemId.IsEmpty()) return;
+
+	CString url = pli.m_fns.GetHead();
+	CString parseUrl = url;
+	if(!parseUrl.Left(6).CompareNoCase(_T("hls://")))
+		parseUrl = _T("http://") + parseUrl.Mid(6);
+
+	CUrl playlistUrl;
+	if(!playlistUrl.CrackUrl(parseUrl))
+	{
+		TRACE(_T("Jellyfin playlist: URL parse failed\n"));
+		return;
+	}
+	INTERNET_PORT playlistPort = playlistUrl.GetPortNumber();
+	if(playlistPort == 0) playlistPort = INTERNET_DEFAULT_HTTP_PORT;
+
+	int scheme = url.Find(_T("://"));
+	int pathStart = scheme < 0 ? -1 : url.Find(_T('/'), scheme + 3);
+	if(pathStart < 0) return;
+	CString path = url.Mid(pathStart);
+	int videos = path.Find(_T("/Videos/"));
+	if(videos < 0) return;
+	path = path.Mid(videos);
+	int query = path.Find(_T('?'));
+	if(query >= 0) path = path.Left(query);
+	if(path.Left(8).CompareNoCase(_T("/Videos/"))) return;
+
+	int slash = path.Find(_T('/'), 8);
+	if(slash <= 8) return;
+	CString itemId = path.Mid(8, slash - 8);
+	CString streamPath = path.Mid(slash + 1).MakeLower();
+	if(streamPath.Left(7) != _T("stream.") && streamPath.Left(11) != _T("master.m3u8")) return;
+
+	AppSettings& settings = AfxGetAppSettings();
+	int matchedServer = -1;
+	int hostnameOnlyServer = -1;
+	for(size_t i = 0; i < settings.JellyfinServers.GetCount(); i++)
+	{
+		const AppSettings::JellyfinServer& server = settings.JellyfinServers[i];
+		CString serverUrl = server.url;
+		serverUrl.TrimRight(_T("/"));
+		if(serverUrl.IsEmpty() || server.deviceId.IsEmpty()) continue;
+
+		CUrl configuredUrl;
+		if(!configuredUrl.CrackUrl(serverUrl)) continue;
+		INTERNET_PORT configuredPort = configuredUrl.GetPortNumber();
+		if(configuredPort == 0)
+			configuredPort = !_tcsicmp(configuredUrl.GetSchemeName(), _T("https"))
+				? INTERNET_DEFAULT_HTTPS_PORT : INTERNET_DEFAULT_HTTP_PORT;
+		if(_tcsicmp(playlistUrl.GetHostName(), configuredUrl.GetHostName())) continue;
+		if(playlistPort == configuredPort)
+		{
+			matchedServer = (int)i;
+			break;
+		}
+		if(hostnameOnlyServer < 0) hostnameOnlyServer = (int)i;
+		else hostnameOnlyServer = -2;
+	}
+
+	if(matchedServer < 0 && hostnameOnlyServer >= 0)
+		matchedServer = hostnameOnlyServer;
+	if(matchedServer < 0)
+	{
+		TRACE(_T("Jellyfin playlist: no configured server matches %s:%u\n"), playlistUrl.GetHostName(), playlistPort);
+		return;
+	}
+
+	const AppSettings::JellyfinServer& server = settings.JellyfinServers[matchedServer];
+	CString serverUrl = server.url;
+	serverUrl.TrimRight(_T("/"));
+	pli.m_fJellyfin = true;
+	pli.m_jellyfinServerUrl = serverUrl;
+	pli.m_jellyfinDeviceId = server.deviceId;
+	pli.m_jellyfinItemId = itemId;
+	pli.m_jellyfinMediaSourceId = GetUrlParameter(url, _T("MediaSourceId"));
+	CString audioStreamIndex = GetUrlParameter(url, _T("AudioStreamIndex"));
+	if(!audioStreamIndex.IsEmpty()) pli.m_jellyfinAudioStreamIndex = _ttoi(audioStreamIndex);
+	TRACE(_T("Jellyfin playlist: matched %s:%u, item %s\n"), playlistUrl.GetHostName(), playlistPort, itemId);
+
+	CJellyfinClient client;
+	client.SetServer(serverUrl);
+	client.SetDeviceId(server.deviceId);
+	client.SetAccessToken(server.userId, server.accessToken);
+	CJellyfinItem item;
+	CString error;
+	if(client.GetItem(itemId, item, error))
+	{
+		pli.m_label = item.name;
+		pli.m_jellyfinRuntimeTicks = item.runtimeTicks;
+		pli.m_duration = item.runtimeTicks;
+		if(pli.m_jellyfinMediaSourceId.IsEmpty()) pli.m_jellyfinMediaSourceId = CString(item.mediaSourceId);
+		TRACE(_T("Jellyfin playlist: loaded title for item %s\n"), itemId);
+	}
+	else
+		TRACE(_T("Jellyfin playlist: title lookup failed for item %s: %s\n"), itemId, error);
 }
 
 void CPlayerPlaylistBar::AddItem(CString fn, CAtlList<CString>* subs)
@@ -190,6 +331,7 @@ void CPlayerPlaylistBar::AddItem(CAtlList<CString>& fns, CAtlList<CString>* subs
 		}
 	}
 
+	IdentifyJellyfinItem(pli);
 	m_pl.AddTail(pli);
 }
 
@@ -244,6 +386,53 @@ static bool SearchFiles(CString mask, CAtlList<CString>& sl)
 		|| sl.GetCount() == 0 && mask.FindOneOf(_T("?*")) >= 0);
 }
 
+static bool GetStandardPlaylistEntries(const CString& fn, CAtlList<CString>& entries)
+{
+	CString ext = CPath(fn).GetExtension().MakeLower();
+	if(ext != _T(".pls") && ext != _T(".m3u") && ext != _T(".asx"))
+		return false;
+
+	CTextFile f(CTextFile::ANSI);
+	if(!f.Open(fn)) return false;
+
+	CString line;
+	while(f.ReadString(line))
+	{
+		line.Trim();
+		if(line.IsEmpty()) continue;
+
+		if(ext == _T(".pls"))
+		{
+			int equals = line.Find(_T('='));
+			if(equals <= 4 || line.Left(4).CompareNoCase(_T("File"))) continue;
+			CString index = line.Mid(4, equals - 4);
+			if(_tcstol(index, NULL, 10) <= 0) continue;
+			CString url = line.Mid(equals + 1).Trim(_T(" \t\""));
+			if(!url.IsEmpty()) entries.AddTail(url);
+		}
+		else if(ext == _T(".m3u"))
+		{
+			if(line[0] != _T('#')) entries.AddTail(line);
+		}
+		else
+		{
+			CString lower = line;
+			lower.MakeLower();
+			int href = lower.Find(_T("href"));
+			int equals = href < 0 ? -1 : lower.Find(_T('='), href + 4);
+			if(equals < 0) continue;
+
+			CString value = line.Mid(equals + 1).TrimLeft(_T(" \t"));
+			if(value.IsEmpty() || (value[0] != _T('\"') && value[0] != _T('\''))) continue;
+			TCHAR quote = value[0];
+			int end = value.Find(quote, 1);
+			if(end > 1) entries.AddTail(value.Mid(1, end - 1));
+		}
+	}
+
+	return !entries.IsEmpty();
+}
+
 void CPlayerPlaylistBar::ParsePlayList(CString fn, CAtlList<CString>* subs)
 {
 	CAtlList<CString> sl;
@@ -254,6 +443,7 @@ void CPlayerPlaylistBar::ParsePlayList(CString fn, CAtlList<CString>* subs)
 void CPlayerPlaylistBar::ParsePlayList(CAtlList<CString>& fns, CAtlList<CString>* subs)
 {
 	if(fns.IsEmpty()) return;
+	TRACE(_T("Playlist parse: %s\n"), fns.GetHead());
 
 	// resolve .lnk files
 
@@ -286,12 +476,35 @@ void CPlayerPlaylistBar::ParsePlayList(CAtlList<CString>& fns, CAtlList<CString>
 		return;
 	}
 
+	CAtlList<CString> entries;
+	if(GetStandardPlaylistEntries(fns.GetHead(), entries))
+	{
+		TRACE(_T("Playlist import: %d standard entries from %s\n"), entries.GetCount(), fns.GetHead());
+		POSITION pos = entries.GetHeadPosition();
+		while(pos)
+		{
+			CAtlList<CString> entry;
+			CString value = entries.GetNext(pos);
+			if(value.Find(_T(':')) < 0 && value.Left(2) != _T("\\\\") && value.Left(2) != _T("//"))
+			{
+				CPath base(fns.GetHead());
+				base.RemoveFileSpec();
+				base.Append(CPath(value));
+				value = (LPCTSTR)base;
+			}
+			entry.AddTail(value);
+			AddItem(entry, NULL);
+		}
+		return;
+	}
+	TRACE(_T("Playlist parse: no direct standard entries\n"));
+
 	CAtlList<CString> redir;
 	CStringA ct = GetContentType(fns.GetHead(), &redir);
 	if(!redir.IsEmpty())
 	{
 		POSITION pos = redir.GetHeadPosition();
-		while(pos) ParsePlayList(sl.GetNext(pos), subs);
+		while(pos) ParsePlayList(redir.GetNext(pos), subs);
 		return;
 	}
 
@@ -319,11 +532,12 @@ static CString CombinePath(CPath p, CString fn)
 bool CPlayerPlaylistBar::ParseMPCPlayList(CString fn)
 {
 	CString str;
+	CStringW wstr;
 	CAtlMap<int, CPlaylistItem> pli;
 	CAtlArray<int> idx;
 
 	CWebTextFile f;
-	if(!f.Open(fn) || !f.ReadString(str) || str != _T("MPCPLAYLIST"))
+	if(!f.Open(fn) || !f.ReadString(wstr) || CString(wstr) != _T("MPCPLAYLIST"))
 		return false;
 
 	if(f.GetEncoding() == CTextFile::ASCII) 
@@ -332,8 +546,9 @@ bool CPlayerPlaylistBar::ParseMPCPlayList(CString fn)
 	CPath base(fn);
 	base.RemoveFileSpec();
 
-	while(f.ReadString(str))
+	while(f.ReadString(wstr))
 	{
+		str = CString(wstr);
 		CAtlList<CString> sl;
 		Explode(str, sl, ',', 3);
 		if(sl.GetCount() != 3) continue;
@@ -352,15 +567,34 @@ bool CPlayerPlaylistBar::ParseMPCPlayList(CString fn)
 			else if(key == _T("vinput")) pli[i].m_vinput = _ttol(value);
 			else if(key == _T("vchannel")) pli[i].m_vchannel = _ttol(value);
 			else if(key == _T("ainput")) pli[i].m_ainput = _ttol(value);
-			else if(key == _T("country")) pli[i].m_country = _ttol(value);			
+			else if(key == _T("country")) pli[i].m_country = _ttol(value);
 		}
 	}
 
 	qsort(idx.GetData(), idx.GetCount(), sizeof(int), s_int_comp);
 	for(int i = 0; i < idx.GetCount(); i++)
+	{
+		IdentifyJellyfinItem(pli[idx[i]]);
 		m_pl.AddTail(pli[idx[i]]);
+	}
 
 	return pli.GetCount() > 0;
+}
+
+static void WriteMPCPlayListString(CTextFile& f, const CString& str)
+{
+#ifdef _UNICODE
+	f.WriteString((LPCWSTR)str);
+#else
+	int len = MultiByteToWideChar(CP_ACP, 0, str, -1, NULL, 0);
+	if(len <= 0)
+		return;
+
+	CStringW wstr;
+	MultiByteToWideChar(CP_ACP, 0, str, -1, wstr.GetBuffer(len), len);
+	wstr.ReleaseBuffer();
+	f.WriteString((LPCWSTR)wstr);
+#endif
 }
 
 bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e, bool fRemovePath)
@@ -369,7 +603,7 @@ bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e, bool fRem
 	if(!f.Save(fn, e))
 		return false;
 
-	f.WriteString(_T("MPCPLAYLIST\n"));
+	WriteMPCPlayListString(f, _T("MPCPLAYLIST\n"));
 
 	POSITION pos = m_pl.GetHeadPosition(), pos2;
 	for(int i = 1; pos; i++)
@@ -381,10 +615,10 @@ bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e, bool fRem
 
 		CString str;
 		str.Format(_T("%d,type,%d"), i, pli.m_type);
-		f.WriteString(str + _T("\n"));
+		WriteMPCPlayListString(f, str + _T("\n"));
 		
-		if(!pli.m_label.IsEmpty()) 
-			f.WriteString(idx + _T(",label,") + pli.m_label + _T("\n"));
+		if(!pli.m_label.IsEmpty())
+			WriteMPCPlayListString(f, idx + _T(",label,") + pli.m_label + _T("\n"));
 
 		if(pli.m_type == CPlaylistItem::file)
 		{
@@ -393,7 +627,7 @@ bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e, bool fRem
 			{
 				CString fn = pli.m_fns.GetNext(pos2);
 				if(fRemovePath) {CPath p(fn); p.StripPath(); fn = (LPCTSTR)p;}
-				f.WriteString(idx + _T(",filename,") + fn + _T("\n"));
+				WriteMPCPlayListString(f, idx + _T(",filename,") + fn + _T("\n"));
 			}
 
 			pos2 = pli.m_subs.GetHeadPosition();
@@ -401,21 +635,21 @@ bool CPlayerPlaylistBar::SaveMPCPlayList(CString fn, CTextFile::enc e, bool fRem
 			{
 				CString fn = pli.m_subs.GetNext(pos2);
 				if(fRemovePath) {CPath p(fn); p.StripPath(); fn = (LPCTSTR)p;}
-				f.WriteString(idx + _T(",subtitle,") + fn + _T("\n"));
+				WriteMPCPlayListString(f, idx + _T(",subtitle,") + fn + _T("\n"));
 			}
 		}
 		else if(pli.m_type == CPlaylistItem::device && pli.m_fns.GetCount() == 2)
 		{
-			f.WriteString(idx + _T(",video,") + pli.m_fns.GetHead() + _T("\n"));
-			f.WriteString(idx + _T(",audio,") + pli.m_fns.GetTail() + _T("\n"));
+			WriteMPCPlayListString(f, idx + _T(",video,") + pli.m_fns.GetHead() + _T("\n"));
+			WriteMPCPlayListString(f, idx + _T(",audio,") + pli.m_fns.GetTail() + _T("\n"));
 			str.Format(_T("%d,vinput,%d"), i, pli.m_vinput);
-			f.WriteString(str + _T("\n"));
+			WriteMPCPlayListString(f, str + _T("\n"));
 			str.Format(_T("%d,vchannel,%d"), i, pli.m_vchannel);
-			f.WriteString(str + _T("\n"));
+			WriteMPCPlayListString(f, str + _T("\n"));
 			str.Format(_T("%d,ainput,%d"), i, pli.m_ainput);
-			f.WriteString(str + _T("\n"));
+			WriteMPCPlayListString(f, str + _T("\n"));
 			str.Format(_T("%d,country,%d"), i, pli.m_country);
-			f.WriteString(str + _T("\n"));
+			WriteMPCPlayListString(f, str + _T("\n"));
 		}
 	}
 
@@ -437,12 +671,48 @@ void CPlayerPlaylistBar::Empty()
 
 void CPlayerPlaylistBar::Open(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs)
 {
+	TRACE(_T("Playlist open: %d entries, multi=%d\n"), fns.GetCount(), fMulti);
 	Empty();
 	Append(fns, fMulti, subs);
 }
 
+void CPlayerPlaylistBar::OpenJellyfin(const CPlaylistItem& pli)
+{
+	Empty();
+	m_pl.AddTail(pli);
+	Refresh();
+	SavePlaylist();
+}
+
+void CPlayerPlaylistBar::OpenJellyfin(const CAtlArray<CPlaylistItem>& items)
+{
+	Empty();
+	for(size_t i = 0; i < items.GetCount(); i++)
+		m_pl.AddTail(items[i]);
+	Refresh();
+	SavePlaylist();
+}
+
+void CPlayerPlaylistBar::AppendJellyfin(const CAtlArray<CPlaylistItem>& items)
+{
+	for(size_t i = 0; i < items.GetCount(); i++)
+		m_pl.AddTail(items[i]);
+	Refresh();
+	SavePlaylist();
+}
+
+void CPlayerPlaylistBar::InsertJellyfinNext(const CPlaylistItem& pli)
+{
+	POSITION pos = m_pl.GetPos();
+	if(pos) m_pl.InsertAfter(pos, pli);
+	else m_pl.AddTail(pli);
+	Refresh();
+	SavePlaylist();
+}
+
 void CPlayerPlaylistBar::Append(CAtlList<CString>& fns, bool fMulti, CAtlList<CString>* subs)
 {
+	TRACE(_T("Playlist append: %d entries, multi=%d\n"), fns.GetCount(), fMulti);
 	if(fMulti)
 	{
 		ASSERT(subs == NULL || subs->GetCount() == 0);
@@ -622,9 +892,26 @@ void CPlayerPlaylistBar::SetCurTime(REFERENCE_TIME rt)
 	if(POSITION pos = m_pl.GetPos())
 	{
 		CPlaylistItem& pli = m_pl.GetAt(pos);
-		pli.m_duration = rt;
+		pli.m_duration = pli.m_fJellyfin && pli.m_jellyfinRuntimeTicks > 0 ? pli.m_jellyfinRuntimeTicks : rt;
 		m_list.SetItemText(FindItem(pos), COL_TIME, pli.GetLabel(1));
 	}
+}
+
+bool CPlayerPlaylistBar::SetCurJellyfinStreamUrl(const CString& url, int audioStreamIndex, bool fPersist)
+{
+	POSITION pos = m_pl.GetPos();
+	if(!pos || url.IsEmpty())
+		return false;
+
+	CPlaylistItem& pli = m_pl.GetAt(pos);
+	if(!pli.m_fJellyfin)
+		return false;
+
+	pli.m_fns.RemoveAll();
+	pli.m_fns.AddTail(fPersist ? NormalizeJellyfinPlaylistUrl(url) : url);
+	pli.m_jellyfinAudioStreamIndex = audioStreamIndex;
+	if(fPersist) SavePlaylist();
+	return true;
 }
 
 OpenMediaData* CPlayerPlaylistBar::GetCurOMD(REFERENCE_TIME rtStart)
@@ -632,7 +919,9 @@ OpenMediaData* CPlayerPlaylistBar::GetCurOMD(REFERENCE_TIME rtStart)
 	CPlaylistItem pli;
 	if(!GetCur(pli)) return NULL;
 
-	CString fn = CString(pli.m_fns.GetHead()).MakeLower();
+	CString fn;
+	if(!pli.m_fns.IsEmpty()) fn = CString(pli.m_fns.GetHead()).MakeLower();
+	else if(pli.m_type == CPlaylistItem::file) return NULL;
 
 	if(fn.Find(_T("video_ts.ifo")) >= 0
 	|| fn.Find(_T(".ratdvd")) >= 0)
@@ -1350,15 +1639,16 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint p)
 
 			pos = m_pl.GetHeadPosition();
 			CString str;
-			int i;
-			for(i = 0; pos; i++)
+			int nEntries = 0;
+			for(; pos; )
 			{
 				CPlaylistItem& pli = m_pl.GetNext(pos);
 
-				if(pli.m_type != CPlaylistItem::file) 
+				if(pli.m_type != CPlaylistItem::file || pli.m_fns.IsEmpty())
 					continue;
 
 				CString fn = pli.m_fns.GetHead();
+				nEntries++;
 
 				/*
 				if(fRemovePath)
@@ -1371,7 +1661,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint p)
 
 				switch(idx)
 				{
-				case 2: str.Format(_T("File%d=%s\n"), i+1, fn); break;
+				case 2: str.Format(_T("File%d=%s\n"), nEntries, fn); break;
 				case 3: str.Format(_T("%s\n"), fn); break;
 				case 4: str.Format(_T("<Entry><Ref href = \"%s\"/></Entry>\n"), fn); break;
 				default: break;
@@ -1381,7 +1671,7 @@ void CPlayerPlaylistBar::OnContextMenu(CWnd* /*pWnd*/, CPoint p)
 
 			if (idx == 2)
 			{
-				str.Format(_T("NumberOfEntries=%d\n"), i);
+				str.Format(_T("NumberOfEntries=%d\n"), nEntries);
 				f.WriteString(str);
 				f.WriteString(_T("Version=2\n"));
 			}

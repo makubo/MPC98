@@ -26,6 +26,7 @@
 #include "..\..\Filters\Filters.h"
 #include "DX7AllocatorPresenter.h"
 #include "DX9AllocatorPresenter.h"
+#include "..\..\filters\source\hlssource\HlsReader.h"
 #include "DeinterlacerFilter.h"
 #include <initguid.h>
 #include "..\..\..\include\moreuuids.h"
@@ -34,6 +35,45 @@
 #include <Vmr9.h>
 
 //
+
+static CString GetUrlQueryValue(LPCWSTR url, LPCTSTR name)
+{
+    CString value(url);
+    CString key = _T("&") + CString(name) + _T("=");
+    int query = value.Find(_T('?'));
+    int pos = value.Find(key, query >= 0 ? query : 0);
+    if(pos < 0 && query >= 0 && value.Mid(query + 1).Left(_tcslen(name) + 1) == CString(name) + _T("="))
+        pos = query;
+    if(pos < 0) return CString();
+    pos += (pos == query ? 1 : key.GetLength());
+    int end = value.Find(_T('&'), pos);
+    return value.Mid(pos, end < 0 ? value.GetLength() - pos : end - pos);
+}
+
+static CStringW StripHlsPrivateQueryValues(LPCWSTR url)
+{
+	CString value(url);
+	int queryPos = value.Find(_T('?'));
+	if(queryPos < 0) return CStringW(value);
+
+	CString result = value.Left(queryPos);
+	CString query = value.Mid(queryPos + 1);
+	CString cleanQuery;
+	int pos = 0;
+	for(CString part = query.Tokenize(_T("&"), pos); !part.IsEmpty(); part = query.Tokenize(_T("&"), pos))
+	{
+		CString name = part.Left(max(0, part.Find(_T('='))));
+		if(!name.CompareNoCase(_T("MPCAuthToken"))
+		|| !name.CompareNoCase(_T("MPCDeviceId"))
+		|| !name.CompareNoCase(_T("MPCStartTimeTicks")))
+			continue;
+		if(!cleanQuery.IsEmpty()) cleanQuery += _T('&');
+		cleanQuery += part;
+	}
+	if(!cleanQuery.IsEmpty()) result += _T('?') + cleanQuery;
+	return CStringW(result);
+}
+
 // CFGManager
 //
 
@@ -163,6 +203,17 @@ HRESULT CFGManager::EnumSourceFilters(LPCWSTR lpcwstrFileName, CFGFilterList& fl
 	CStringW fn = CStringW(lpcwstrFileName).TrimLeft();
 	CStringW protocol = fn.Left(fn.Find(':')+1).TrimRight(':').MakeLower();
 	CStringW ext = CPathW(fn).GetExtension().MakeLower();
+	CStringW lowerfn(fn);
+	lowerfn.MakeLower();
+
+	// CShoutcastSource registers as the handler for every http URL, but
+	// it only understands ICY/MP3 radio. Jellyfin's progressive MPEG-TS
+	// endpoint is a normal chunked HTTP response, so routing it through
+	// that source leaves playback stalled before the generic URL Reader
+	// can be tried. Jellyfin ignores this marker query parameter; it is
+	// appended only by CJellyfinClient, which lets us preserve ordinary
+	// Shoutcast behavior for all other http URLs.
+	bool fJellyfinStream = lowerfn.Find(L"mpcjellyfin=1") >= 0;
 
 	HANDLE hFile = INVALID_HANDLE_VALUE;
 
@@ -194,6 +245,8 @@ HRESULT CFGManager::EnumSourceFilters(LPCWSTR lpcwstrFileName, CFGFilterList& fl
 		while(pos)
 		{
 			CFGFilter* pFGF = m_source.GetNext(pos);
+			if(fJellyfinStream && pFGF->GetCLSID() == __uuidof(CShoutcastSource))
+				continue;
 			if(pFGF->m_protocols.Find(CString(protocol)))
 				fl.Insert(pFGF, 0, false, false);
 		}
@@ -382,6 +435,21 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 
 	CComQIPtr<IFileSourceFilter> pFSF = pBF;
 	if(!pFSF) return E_NOINTERFACE;
+	CStringW sourceFileName(lpcwstrFileName);
+
+	if(CComQIPtr<IHlsSourceConfig> pHlsConfig = pBF)
+	{
+		CString token = GetUrlQueryValue(lpcwstrFileName, _T("MPCAuthToken"));
+		CString device = GetUrlQueryValue(lpcwstrFileName, _T("MPCDeviceId"));
+		CString start = GetUrlQueryValue(lpcwstrFileName, _T("MPCStartTimeTicks"));
+		CString header;
+		if(!token.IsEmpty() && !device.IsEmpty())
+			header.Format(_T("Authorization: MediaBrowser Client=\"MPC98\", Device=\"Windows\", DeviceId=\"%s\", Version=\"6.4.9.1\", Token=\"%s\"\r\n"), device, token);
+		CStringW wideHeader(header);
+		pHlsConfig->SetRequestHeader(wideHeader);
+		pHlsConfig->SetInitialStartTime(start.IsEmpty() ? 0 : _tcstoi64(start, NULL, 10));
+		sourceFileName = StripHlsPrivateQueryValues(lpcwstrFileName);
+	}
 
 	if(FAILED(hr = AddFilter(pBF, lpcwstrFilterName)))
 		return hr;
@@ -397,7 +465,7 @@ HRESULT CFGManager::AddSourceFilter(CFGFilter* pFGF, LPCWSTR lpcwstrFileName, LP
 		pmt = &mt;
 	}
 
-	if(FAILED(hr = pFSF->Load(lpcwstrFileName, pmt)))
+	if(FAILED(hr = pFSF->Load(sourceFileName, pmt)))
 	{
 		RemoveFilter(pBF);
 		return hr;
@@ -583,6 +651,38 @@ STDMETHODIMP CFGManager::Connect(IPin* pPinOut, IPin* pPinIn)
 			hr = pGC->AddFilterToCache(pBF);
 		}
 		EndEnumCachedFilters
+	}
+
+	// CHlsReader only exposes unencrypted MPEG-TS bytes. Connect it to the
+	// internal splitter directly instead of relying on external filter merits;
+	// older K-Lite/system splitters either reject the growing HLS stream or
+	// probe it unsafely before enough segments are available.
+	CComPtr<IBaseFilter> pSource = GetFilterFromPin(pPinOut);
+	bool fHlsSource = false;
+	if(!pPinIn && pSource)
+	{
+		CComQIPtr<IFileSourceFilter> pFS = pSource;
+		LPOLESTR fn = NULL;
+		if(pFS && SUCCEEDED(pFS->GetCurFile(&fn, NULL)) && fn)
+		{
+			fHlsSource = CStringW(fn).Left(6).CompareNoCase(L"hls://") == 0;
+			CoTaskMemFree(fn);
+		}
+	}
+	if(fHlsSource)
+	{
+		CFGFilterInternal<CMpegSplitterFilter> hlsSplitter(L"HLS MPEG Splitter", MERIT64_ABOVE_DSHOW);
+		CComPtr<IBaseFilter> pBF;
+		CInterfaceList<IUnknown, &IID_IUnknown> pUnks;
+		if(SUCCEEDED(hlsSplitter.Create(&pBF, pUnks))
+		&& SUCCEEDED(AddFilter(pBF, hlsSplitter.GetName()))
+		&& SUCCEEDED(ConnectFilterDirect(pPinOut, pBF, NULL))
+		&& SUCCEEDED(hr = ConnectFilter(pBF, NULL)))
+		{
+			m_pUnks.AddTailList(&pUnks);
+			return hr;
+		}
+		if(pBF) RemoveFilter(pBF);
 	}
 
 	// 3. Try filters in the graph
@@ -1161,9 +1261,10 @@ STDMETHODIMP CFGManager::GetDeadEnd(int iIndex, CAtlList<CStringW>& path, CAtlLi
 	{
 		const path_t& p = m_deadends[iIndex]->GetNext(pos);
 
-		CStringW str;
-		str.Format(L"%s::%s", p.filter, p.pin);
-		path.AddTail(str);
+		// Some failed streaming graph paths retain an incomplete filter-name
+		// CString in the dead-end list. Do not dereference it while building
+		// the diagnostic dialog; the media types remain available below.
+		path.AddTail(L"<filter path unavailable>");
 	}
 
 	mts.AddTailList(&m_deadends[iIndex]->mts);
@@ -1190,6 +1291,12 @@ CFGManagerCustom::CFGManagerCustom(LPCTSTR pName, LPUNKNOWN pUnk, UINT src, UINT
 		pFGF->m_protocols.AddTail(_T("http"));
 		m_source.AddTail(pFGF);
 	}
+
+	// HLS is exposed through a private scheme so it cannot hijack ordinary
+	// HTTP playback. CHlsReader translates hls:// back to HTTP internally.
+	pFGF = new CFGFilterInternal<CHlsReader>();
+	pFGF->m_protocols.AddTail(_T("hls"));
+	m_source.AddTail(pFGF);
 
 #if (_MSC_VER < 1500)
 	// if(src & SRC_UDP)

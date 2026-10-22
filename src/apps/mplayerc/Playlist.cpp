@@ -32,7 +32,10 @@ UINT CPlaylistItem::m_globalid  = 0;
 CPlaylistItem::CPlaylistItem()
 	: m_type(file)
 	, m_fInvalid(false)
+	, m_fJellyfin(false)
 	, m_duration(0)
+	, m_jellyfinRuntimeTicks(0)
+	, m_jellyfinAudioStreamIndex(-1)
 	, m_vinput(-1)
 	, m_vchannel(-1)
 	, m_ainput(-1)
@@ -59,6 +62,13 @@ CPlaylistItem& CPlaylistItem::operator = (const CPlaylistItem& pli)
 	m_subs.AddTailList(&pli.m_subs);
 	m_type = pli.m_type;
 	m_fInvalid = pli.m_fInvalid;
+	m_fJellyfin = pli.m_fJellyfin;
+	m_jellyfinServerUrl = pli.m_jellyfinServerUrl;
+	m_jellyfinDeviceId = pli.m_jellyfinDeviceId;
+	m_jellyfinItemId = pli.m_jellyfinItemId;
+	m_jellyfinMediaSourceId = pli.m_jellyfinMediaSourceId;
+	m_jellyfinRuntimeTicks = pli.m_jellyfinRuntimeTicks;
+	m_jellyfinAudioStreamIndex = pli.m_jellyfinAudioStreamIndex;
 	m_duration = pli.m_duration;
 	m_vinput = pli.m_vinput;
 	m_vchannel = pli.m_vchannel;
@@ -87,7 +97,8 @@ CString CPlaylistItem::GetLabel(int i)
 
 	if(i == 0)
 	{
-		if(!m_label.IsEmpty()) str = m_label;
+		if(m_fJellyfin) str = _T("[JF] ") + (m_label.IsEmpty() ? m_jellyfinItemId : m_label);
+		else if(!m_label.IsEmpty()) str = m_label;
 		else if(!m_fns.IsEmpty()) str = StripPath(m_fns.GetHead());
 	}
 	else if(i == 1)
@@ -189,8 +200,13 @@ void CPlaylist::SortByName()
 	POSITION pos = GetHeadPosition();
 	for(int i = 0; pos; i++, GetNext(pos))
 	{
-		CString& fn = GetAt(pos).m_fns.GetHead();
-		a[i].str = (LPCTSTR)fn + max(fn.ReverseFind('/'), fn.ReverseFind('\\')) + 1;
+		CPlaylistItem& pli = GetAt(pos);
+		if(pli.m_fJellyfin) a[i].str = pli.m_label.IsEmpty() ? pli.m_jellyfinItemId : (LPCTSTR)pli.m_label;
+		else
+		{
+			CString& fn = pli.m_fns.GetHead();
+			a[i].str = (LPCTSTR)fn + max(fn.ReverseFind('/'), fn.ReverseFind('\\')) + 1;
+		}
 		a[i].pos = pos;
 	}
 	qsort(a.GetData(), a.GetCount(), sizeof(plsort2_t), compare2);
@@ -208,7 +224,11 @@ void CPlaylist::SortByPath()
 	a.SetCount(GetCount());
 	POSITION pos = GetHeadPosition();
 	for(int i = 0; pos; i++, GetNext(pos))
-		a[i].str = GetAt(pos).m_fns.GetHead(), a[i].pos = pos;
+	{
+		CPlaylistItem& pli = GetAt(pos);
+		a[i].str = pli.m_fJellyfin ? (pli.m_label.IsEmpty() ? (LPCTSTR)pli.m_jellyfinItemId : (LPCTSTR)pli.m_label) : (LPCTSTR)pli.m_fns.GetHead();
+		a[i].pos = pos;
+	}
 	qsort(a.GetData(), a.GetCount(), sizeof(plsort2_t), compare2);
 	for(int i = 0; i < a.GetCount(); i++)
 	{

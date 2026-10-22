@@ -45,6 +45,18 @@
 
 #include "PixelShaderCompiler.h"
 
+#ifndef D3D9b_SDK_VERSION
+#define D3D9b_SDK_VERSION D3D_SDK_VERSION
+#endif
+
+#ifndef MixerPref9_RenderTargetYUV
+#define MixerPref9_RenderTargetYUV 0x00000002
+#endif
+
+#ifndef MixerPref9_RenderTargetMask
+#define MixerPref9_RenderTargetMask 0x0000000f
+#endif
+
 CCritSec g_ffdshowReceive;
 bool queueu_ffdshow_support = false;
 

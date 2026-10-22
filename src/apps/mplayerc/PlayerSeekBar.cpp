@@ -275,6 +275,12 @@ void CPlayerSeekBar::OnLButtonDown(UINT nFlags, CPoint point)
 
 void CPlayerSeekBar::OnLButtonUp(UINT nFlags, CPoint point)
 {
+	// A progressive Jellyfin stream must be reopened server-side to seek.
+	// SB_ENDSCROLL gives the frame one completion event after a drag rather
+	// than forcing a reopen for every SB_THUMBTRACK notification.
+	if(GetCapture() == this)
+		GetParent()->PostMessage(WM_HSCROLL, MAKEWPARAM(SB_ENDSCROLL, 0), (LPARAM)m_hWnd);
+
 	ReleaseCapture();
 
 	CDialogBar::OnLButtonUp(nFlags, point);

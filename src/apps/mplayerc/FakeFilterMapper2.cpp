@@ -26,6 +26,7 @@
 #include "..\..\DSUtil\DSUtil.h"
 
 #include <initguid.h>
+#include <mpc98/compat/rpc_compat.h>
 #include <qedit.h>
 
 DETOUR_TRAMPOLINE(HRESULT WINAPI Real_CoCreateInstance(IN REFCLSID rclsid, IN LPUNKNOWN pUnkOuter, IN DWORD dwClsContext, IN REFIID riid, OUT LPVOID FAR* ppv), CoCreateInstance);
